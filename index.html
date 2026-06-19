@@ -116,6 +116,7 @@
   <button class="btn" id="btnCreate">CRÉER UNE ROOM</button>
   <button class="btn alt" id="btnJoin">REJOINDRE UNE ROOM</button>
   <button class="btn alt" id="btnSolo">SOLO (vs IA)</button>
+  <button class="btn alt" id="btnTraining">ENTRAÎNEMENT (sans IA)</button>
   <div class="hintline">
     Crée une room, partage le code à ton pote, et défiez-vous en 1v1.<br>
     Connexion P2P directe (WebRTC). Marche mieux en Wi-Fi maison qu'en réseau d'entreprise.
@@ -224,6 +225,9 @@ const WALK = 6.2, SPRINT = 9.8;
 const SPRINT_DRAIN = 25, STAM_REGEN = 18, TACKLE_COST = 12.5; // endurance /100
 const GRAV = 22, JUMP_V = 7.2;
 const POSSESS = 1.5;
+const STAM_MAX = 105;                      // jauge d'endurance +5% (v0.3.x)
+const PUSH_FWD = 11;                       // poussée de balle (Espace avec ballon)
+const DASH_SIDE = 10;                      // dribble latéral (Ctrl/Cmd + Q/D)
 const SHOT_MIN = 15, SHOT_MAX = 29.1, LOB_FWD = 12, LOB_UP = 11;  // puissance max -3% (v0.3)
 const TACKLE_SPEED = 14, TACKLE_TIME = 0.55, TACKLE_CD = 1.0;
 const MATCH_TIME = 300;                    // 5 min
@@ -623,7 +627,7 @@ function animateLegs(mesh, speed, anim, dt){
 }
 
 // ===================== ETAT DE JEU =====================
-let isHost=false, isSolo=false, myIndex=0, connected=false;
+let isHost=false, isSolo=false, isTraining=false, myIndex=0, connected=false;
 let peer=null, conn=null;
 // Lobby (choix pays + vote map + mode)
 let myCountry=null, oppCountry=null, myVote=null, oppVote=null, myReady=false, oppReady=false;
@@ -640,7 +644,7 @@ function myTeam(){ return teamOf(myIndex); }
 
 function newPlayer(idx){
   return { idx, team:teamOf(idx), x:0,z:0,y:0, vx:0,vz:0,vy:0, yaw:0, onGround:true,
-    stamina:100, tackleT:0, tackleCd:0, shotCd:0, stunT:0, anim:0, speed:0, charge:0 };
+    stamina:STAM_MAX, tackleT:0, tackleCd:0, shotCd:0, stunT:0, anim:0, speed:0, charge:0 };
 }
 let P=[ newPlayer(0), newPlayer(1) ];
 function setupPlayers(){
@@ -662,8 +666,7 @@ const shotGap=[0,0];                // case ouverte du mur "zone de tir" (par ca
 function randGap(){ shotGap[0]=(Math.random()*6)|0; shotGap[1]=(Math.random()*6)|0; }
 
 const netInput=[ null, null, null, null ];
-const localInput={ mvx:0,mvz:0, yaw:Math.PI, pitch:0, sprint:false, jumpEdge:false, charge:0,
-  act:{ shoot:null, lob:false, tackle:false }, pen:null };
+const localInput=mkInput(); localInput.yaw=Math.PI;
 
 function blankView(){ return {x:0,y:0,z:0,yaw:0,anim:0,speed:0,charge:0}; }
 const view={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ],
@@ -709,7 +712,7 @@ function locomotion(p, inp, dt){
     p.vz += (dvz-p.vz)*Math.min(1,14*dt);
     p.x += p.vx*dt; p.z += p.vz*dt;
     if(canSprint) p.stamina-=SPRINT_DRAIN*dt; else p.stamina+=STAM_REGEN*dt;
-    p.stamina=clamp(p.stamina,0,100);
+    p.stamina=clamp(p.stamina,0,STAM_MAX);
   }
   if(inp.jumpEdge && p.onGround && p.tackleT<=0){ p.vy=JUMP_V; p.onGround=false; }
   p.vy -= GRAV*dt; p.y += p.vy*dt;
@@ -762,8 +765,9 @@ function ballControl(dt){
   for(let i=0;i<NP;i++){
     const p=P[i], inp=inputFor(i); if(!inp) continue;
     if(inp.act.tackle && p.tackleCd<=0 && p.tackleT<=0 && p.stamina>=TACKLE_COST){
-      p.tackleT=TACKLE_TIME; p.tackleCd=TACKLE_CD; p.stamina-=TACKLE_COST;
-      const f=fwd(p.yaw); p.vx=f.x*TACKLE_SPEED; p.vz=f.z*TACKLE_SPEED; p.anim=2;
+      const tpw=clamp(inp.tacklePow||0,0,1), mult=1+0.15*tpw;   // tacle chargé : +15% portée, +3% endurance
+      p.tackleT=TACKLE_TIME*mult; p.tackleCd=TACKLE_CD; p.stamina-=TACKLE_COST+3*tpw;
+      const f=fwd(p.yaw); p.vx=f.x*TACKLE_SPEED*mult; p.vz=f.z*TACKLE_SPEED*mult; p.anim=2;
       if(ball.owner===i) ball.owner=null;
     }
   }
@@ -789,10 +793,17 @@ function ballControl(dt){
       ball.vx=f.x*LOB_FWD; ball.vz=f.z*LOB_FWD; ball.vy=LOB_UP;
       p.shotCd=0.35; ball.owner=null; armWall(); beep(300,0.08,0.15);
     } else if(inp.act.softlob){
-      // petit lob : lève le ballon devant soi (pour ensuite faire une tête)
-      ball.vx=f.x*4.5; ball.vz=f.z*4.5; ball.vy=7.5;
+      // petit lob : lève le ballon devant soi (pour ensuite faire une tête) — hauteur +25%
+      ball.vx=f.x*4.5; ball.vz=f.z*4.5; ball.vy=9.4;
       ball.y=Math.max(ball.y,BALL_R+0.05); p.shotCd=0.3; ball.owner=null; beep(360,0.07,0.13);
+    } else if(inp.act.push){
+      // poussée de balle : knock vers l'avant (on garde la main pour courir dessus)
+      ball.vx=f.x*PUSH_FWD; ball.vz=f.z*PUSH_FWD; ball.vy=0.5;
+      ball.y=BALL_R; p.shotCd=0.18; ball.owner=null; beep(220,0.05,0.12);
     } else {
+      // dribble latéral : dash sur le côté en gardant le ballon
+      if(inp.act.dash){ const rx=-Math.cos(p.yaw), rz=Math.sin(p.yaw);
+        p.vx += rx*inp.act.dash*DASH_SIDE; p.vz += rz*inp.act.dash*DASH_SIDE; }
       // dribble : la balle colle devant le joueur
       const tx=p.x+f.x*0.82, tz=p.z+f.z*0.82;
       ball.x += (tx-ball.x)*Math.min(1,22*dt);
@@ -807,8 +818,10 @@ function ballControl(dt){
     const p=P[i]; if(p.tackleT>0) continue;
     const hy=p.y+1.95;                                   // hauteur de tête
     if(ball.y>1.15 && Math.abs(ball.y-hy)<0.6 && dist2(p.x,p.z,ball.x,ball.z)<(PLAYER_R+0.45)*(PLAYER_R+0.45) && ball.owner==null){
-      const f=fwd(p.yaw), pw=7+p.speed*0.9+(p.onGround?0:2.5);   // tête plus forte en sprint/saut
-      ball.vx=f.x*pw; ball.vz=f.z*pw; ball.vy=Math.max(ball.vy*0.2,4)+(p.onGround?0:2);
+      const f=fwd(p.yaw); let pw=7+p.speed*0.9+(p.onGround?0:2.5);   // tête plus forte en sprint/saut
+      const engage = ball.lastTouch<0;                               // tête d'engagement (1re touche)
+      if(engage) pw*=0.5;                                            // puissance -50% à l'engagement
+      ball.vx=f.x*pw; ball.vz=f.z*pw; ball.vy=(engage?2.5:Math.max(ball.vy*0.2,4))+(p.onGround?0:2);
       ball.lastTouch=i; beep(240,0.05,0.14);
     }
   }
@@ -861,8 +874,8 @@ function ballPhysics(dt){
 }
 
 // ===================== INPUTS (autorité) =====================
-function mkInput(){ return { mvx:0,mvz:0,yaw:0,pitch:0,sprint:false,jumpEdge:false,charge:0,
-  act:{shoot:null,lob:false,tackle:false,softlob:false}, pen:null }; }
+function mkInput(){ return { mvx:0,mvz:0,yaw:0,pitch:0,sprint:false,jumpEdge:false,charge:0,tacklePow:0,
+  act:{shoot:null,lob:false,tackle:false,softlob:false,push:false,dash:0}, pen:null }; }
 const NULLINPUT=mkInput();
 const aiInputs=[mkInput(),mkInput(),mkInput(),mkInput()];
 function inputFor(i){
@@ -872,7 +885,8 @@ function inputFor(i){
 }
 function clearActs(){
   for(const inp of [localInput, netInput[clientIndex], ...aiInputs]){
-    if(!inp) continue; inp.jumpEdge=false; inp.act.shoot=null; inp.act.lob=false; inp.act.tackle=false; inp.act.softlob=false;
+    if(!inp) continue; inp.jumpEdge=false; inp.act.shoot=null; inp.act.lob=false; inp.act.tackle=false;
+    inp.act.softlob=false; inp.act.push=false; inp.act.dash=0; inp.tacklePow=0;
   }
 }
 
@@ -961,17 +975,19 @@ function recordReplay(){
 
 // ===================== GESTION MATCH =====================
 function kickoff(cd){
+  const adv=HL*0.25;   // avancés au 3/4 de leur moitié (face à face)
   if(mode2v2){
-    P[0].x=-5; P[0].z=-8;  P[0].yaw=0;
-    P[1].x=6;  P[1].z=-13; P[1].yaw=0;
-    P[2].x=-5; P[2].z=8;   P[2].yaw=Math.PI;
-    P[3].x=6;  P[3].z=13;  P[3].yaw=Math.PI;
+    P[0].x=-4; P[0].z=-adv; P[0].yaw=0;
+    P[1].x=4;  P[1].z=-adv; P[1].yaw=0;
+    P[2].x=-4; P[2].z= adv; P[2].yaw=Math.PI;
+    P[3].x=4;  P[3].z= adv; P[3].yaw=Math.PI;
   } else {
-    P[0].x=0; P[0].z=-7; P[0].yaw=0;
-    P[1].x=0; P[1].z=7;  P[1].yaw=Math.PI;
+    P[0].x=0; P[0].z=-adv; P[0].yaw=0;
+    P[1].x=0; P[1].z= adv; P[1].yaw=Math.PI;
   }
-  for(const p of P){ p.y=0; p.vx=p.vz=p.vy=0; p.tackleT=0; p.tackleCd=0; p.shotCd=0; p.stunT=0; p.stamina=100; p.anim=0; p.charge=0; }
-  ball.x=0; ball.z=0; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.lastTouch=-1; ball.owner=null; ball.walled=false;
+  for(const p of P){ p.y=0; p.vx=p.vz=p.vy=0; p.tackleT=0; p.tackleCd=0; p.shotCd=0; p.stunT=0; p.stamina=STAM_MAX; p.anim=0; p.charge=0; }
+  // le ballon tombe d'en haut au centre : avantage au premier qui saute et touche de la tête
+  ball.x=0; ball.z=0; ball.y=7; ball.vx=ball.vy=ball.vz=0; ball.lastTouch=-1; ball.owner=null; ball.walled=false;
   randGap(); gmode='countdown'; cdT=cd; hideBanner();
 }
 function startMatch(){ setupPlayers(); score=[0,0]; timeLeft=MATCH_TIME; overtime=false; forfeitTeam=-1; hidePause(); rbuf.length=0; hideEnd(); kickoff(3); }
@@ -985,10 +1001,11 @@ function stepSim(dt){
     return;
   }
   if(gmode==='play'){
-    timeLeft-=dt;
-    if(timeLeft<=0){ timeLeft=0;
-      if(score[0]===score[1]){ if(!overtime){ overtime=true; showBanner('PROLONGATION'); showSub('But en or !',2200); setTimeout(hideBanner,1300); } }
-      else { endMatch(); return; }
+    if(!isTraining){ timeLeft-=dt;
+      if(timeLeft<=0){ timeLeft=0;
+        if(score[0]===score[1]){ if(!overtime){ overtime=true; showBanner('PROLONGATION'); showSub('But en or !',2200); setTimeout(hideBanner,1300); } }
+        else { endMatch(); return; }
+      }
     }
     runActors(dt);
     ballControl(dt); ballPhysics(dt); separatePlayers();
@@ -1007,15 +1024,15 @@ function stepSim(dt){
     goalT-=dt;
     if(goalT<=0){
       if(overtime){ endMatch(); return; }                          // but en or
-      if(Math.abs(score[0]-score[1])>=MERCY){ endMatch(); return; }
-      if(noReplay){ noReplay=false; hideBanner(); kickoff(2); }
+      if(!isTraining && Math.abs(score[0]-score[1])>=MERCY){ endMatch(); return; }
+      if(noReplay){ noReplay=false; hideBanner(); kickoff(3); }
       else { gmode='replay'; replayClock=0; replayIdx=0; elReplay.style.display='block'; showBanner('BANQUE'); }
     }
     return;
   }
   if(gmode==='replay'){
     replayClock+=dt*REPLAY_SPEED; replayIdx=Math.floor(replayClock/STEP);
-    if(skipReplay || replayIdx>=rbuf.length){ skipReplay=false; elReplay.style.display='none'; hideBanner(); kickoff(2); }
+    if(skipReplay || replayIdx>=rbuf.length){ skipReplay=false; elReplay.style.display='none'; hideBanner(); kickoff(3); }
     return;
   }
   if(gmode==='penalty'){ stepPenalty(dt); clearActs(); return; }
@@ -1079,7 +1096,7 @@ function stepPenalty(dt){
 // ===================== IA (multi-joueurs, par équipe) =====================
 const aiState=[{shootCd:0,tackleCd:0},{shootCd:0,tackleCd:0},{shootCd:0,tackleCd:0},{shootCd:0,tackleCd:0}];
 const aipk={ shChosen:false, gkChosen:false, aimX:0, aimY:1.1, dvX:0, dvY:1.1, dvT:0 };
-function isAI(i){ if(i===0) return false; if(!isSolo && i===clientIndex) return false; return true; }
+function isAI(i){ if(isTraining) return false; if(i===0) return false; if(!isSolo && i===clientIndex) return false; return true; }
 function setAImove(i, tx, tz, sprint){
   const me=P[i], inp=aiInputs[i]; let dx=tx-me.x, dz=tz-me.z; const d=Math.hypot(dx,dz)||1;
   inp.mvx=dx/d; inp.mvz=dz/d; inp.sprint = sprint && me.stamina>35 && d>3;
@@ -1112,21 +1129,27 @@ function updateAI(dt){
     const goalZ=attackGoalZ(t), ownGoalZ=-goalZ, gs=Math.sign(goalZ)||1;
     const dBall=Math.hypot(ball.x-me.x, ball.z-me.z);
     const chaser = teamClosestToBall(t)===i;
+    const haveBall = (ball.owner===i);
     // adversaire le plus proche du ballon
     let oppNear=-1, ob=Infinity;
     for(let k=0;k<NP;k++){ if(teamOf(k)===t) continue; const d=dist2(P[k].x,P[k].z,ball.x,ball.z); if(d<ob){ob=d;oppNear=k;} }
     const dOppBall = oppNear<0?99:Math.hypot(ball.x-P[oppNear].x, ball.z-P[oppNear].z);
+    const oppHasBall = oppNear>=0 && ball.owner===oppNear;
 
-    if(chaser){
-      setAImove(i, ball.x*0.7, ball.z - gs*1.6, true);   // se placer côté opposé au but visé
-      if(dBall<1.6){
-        // EN POSSESSION : toujours faire face au but ADVERSE (corrige le csc / auto-but)
-        me.yaw = yawTo((ball.x*0.25) - me.x, goalZ - me.z);
-        if(Math.abs(goalZ - me.z) < 16 && Math.abs(me.x) < 12 && st.shootCd<=0){
-          me.yaw = yawTo((Math.random()*4-2) - me.x, goalZ - me.z);
-          inp.act.shoot = 0.55 + Math.random()*0.4; st.shootCd=1.3;
-        }
-      } else { me.yaw = yawTo(inp.mvx, inp.mvz); }
+    if(haveBall){
+      // EN POSSESSION : foncer vers le but ADVERSE (jamais vers ses propres cages — corrige le csc)
+      const aimX = clamp(ball.x*0.3, -6, 6);
+      setAImove(i, aimX, goalZ - gs*2.0, true);
+      me.yaw = yawTo(aimX - me.x, goalZ - me.z);
+      if(Math.abs(goalZ - me.z) < 17 && Math.abs(me.x) < 13 && st.shootCd<=0){
+        me.yaw = yawTo((Math.random()*4-2) - me.x, goalZ - me.z);
+        inp.act.shoot = (Math.random()<0.20) ? (0.92+Math.random()*0.08)   // 20% : gros tir
+                                             : (0.5 +Math.random()*0.35);
+        st.shootCd=1.5;
+      }
+    } else if(chaser){
+      setAImove(i, ball.x*0.8, ball.z - gs*1.4, true);
+      me.yaw = yawTo(inp.mvx, inp.mvz);
     } else {
       // soutien : se replier entre le ballon et son propre but
       const tx = clamp(ball.x*0.5, -10, 10);
@@ -1134,11 +1157,12 @@ function updateAI(dt){
       setAImove(i, tx, tz, dBall>10);
       me.yaw = yawTo(inp.mvx||0.001, inp.mvz||0.001);
     }
-    if(oppNear>=0){
+    // pressing modéré sur le porteur adverse (seulement le joueur le plus proche du ballon)
+    if(oppNear>=0 && !haveBall && chaser){
       const o=P[oppNear], dOpp=Math.hypot(o.x-me.x, o.z-me.z);
-      if(dOpp<2.3 && dOppBall<1.8 && st.tackleCd<=0 && Math.random()<0.05){
-        const toOpp={x:o.x-me.x, z:o.z-me.z}; const of=fwd(o.yaw);
-        if((toOpp.x*of.x+toOpp.z*of.z) <= 0.35){ me.yaw=yawTo(toOpp.x,toOpp.z); inp.act.tackle=true; st.tackleCd=1.5; }
+      const prob = oppHasBall ? 0.08 : 0.025;
+      if(dOpp<2.4 && dOppBall<2.0 && st.tackleCd<=0 && Math.random()<prob){
+        me.yaw=yawTo(o.x-me.x, o.z-me.z); inp.act.tackle=true; inp.tacklePow=oppHasBall?0.4:0; st.tackleCd=1.8;
       }
     }
     inp.yaw=me.yaw;
@@ -1150,6 +1174,7 @@ function updateAI(dt){
 const keys={};
 const SENS=0.0024;
 let charging=false, chargeT=0;
+let chargingTackle=false, tackleChargeT=0;
 let penRole=null, penGoalZ=0, penGoalZS=1, gkBaseYaw=0;
 let penAimX=0, penAimY=1.1, penDiveX=0, penDiveY=1.1, penLeftHeld=false;
 let penShootCommit=false, penDiveCommit=false, penPower=0;
@@ -1190,7 +1215,13 @@ addEventListener('keydown',e=>{
     else if(connected&&conn){ try{conn.send({t:'skip'});}catch(_){} }
     return;
   }
-  if(e.code==='Space'){ localInput.jumpEdge=true; }
+  // Espace : poussée de balle si on a le ballon, sinon saut
+  if(e.code==='Space'){ if(hasBallLocal()) localInput.act.push=true; else localInput.jumpEdge=true; return; }
+  // dribble latéral : Ctrl/Cmd + Q/D quand on a le ballon
+  if((e.ctrlKey||e.metaKey) && hasBallLocal()){
+    if(e.code==='KeyQ'||e.code==='KeyA'){ e.preventDefault(); localInput.act.dash=-1; return; }
+    if(e.code==='KeyD'){ e.preventDefault(); localInput.act.dash=1; return; }
+  }
 });
 addEventListener('keyup',e=>{ keys[e.code]=false; });
 
@@ -1216,7 +1247,7 @@ addEventListener('mousedown',e=>{
   if(e.button===0){ if(ball){ charging=true; chargeT=0; powWrap.style.display='block'; } }
   else if(e.button===2){
     if(ball){ if(e.ctrlKey||e.metaKey) localInput.act.softlob=true; else localInput.act.lob=true; }
-    else { localInput.act.tackle=true; }
+    else { chargingTackle=true; tackleChargeT=0; }   // charge le tacle (relâche = tacle)
   }
 });
 addEventListener('mouseup',e=>{
@@ -1228,6 +1259,7 @@ addEventListener('mouseup',e=>{
     return;
   }
   if(e.button===0 && charging){ localInput.act.shoot = clamp(chargeT/1.0,0.1,1); charging=false; powWrap.style.display='none'; }
+  if(e.button===2 && chargingTackle){ localInput.tacklePow=clamp(tackleChargeT/0.6,0,1); localInput.act.tackle=true; chargingTackle=false; }
 });
 addEventListener('contextmenu',e=>e.preventDefault());
 
@@ -1244,6 +1276,7 @@ function gatherInput(dt){
   localInput.sprint = !!(keys['ShiftLeft']||keys['ShiftRight']);
   if(charging){ chargeT+=dt; const c=clamp(chargeT/1.0,0,1); powFill.style.width=c*100+'%'; localInput.charge=c; }
   else localInput.charge=0;
+  if(chargingTackle) tackleChargeT+=dt;
 
   if(gmode==='penalty' && penRole){
     const m=localPos(), oy=1.3;
@@ -1288,7 +1321,7 @@ function setStatus(el,txt,col){ const e=document.getElementById(el); if(e)e.text
 function netCleanup(){ try{conn&&conn.close();}catch(e){} try{peer&&peer.destroy();}catch(e){} conn=null;peer=null;connected=false; }
 
 function startHost(){
-  isHost=true; isSolo=false; myIndex=0; connected=false;
+  isHost=true; isSolo=false; isTraining=false; myIndex=0; connected=false;
   const code=genCode();
   document.getElementById('roomCode').textContent=code;
   setStatus('createStatus','Connexion au réseau…','#e0b020');
@@ -1298,7 +1331,7 @@ function startHost(){
   peer.on('connection',c=>{ conn=c; setupConn(); });
 }
 function startJoin(code){
-  isHost=false; isSolo=false; myIndex=1; connected=false;
+  isHost=false; isSolo=false; isTraining=false; myIndex=1; connected=false;
   setStatus('joinStatus','Connexion au réseau…','#e0b020');
   peer=new window.Peer({debug:1});
   peer.on('open',()=>{ setStatus('joinStatus','Recherche de la room…','#e0b020');
@@ -1350,6 +1383,9 @@ function onData(msg){
     if(msg.a[1]) ni.act.lob=true;
     if(msg.a[2]) ni.act.tackle=true;
     if(msg.a[3]) ni.act.softlob=true;
+    if(msg.a[4]) ni.act.push=true;
+    ni.act.dash=msg.a[5]|0;
+    ni.tacklePow=msg.tp||0;
     ni.pen=msg.pn||null;
     return;
   }
@@ -1398,7 +1434,7 @@ function frame(now){
   } else if(connected){
     clientUpdate(dt); sendInput();
   }
-  if(!isHost && !isSolo){ localInput.jumpEdge=false; localInput.act.shoot=null; localInput.act.lob=false; localInput.act.tackle=false; localInput.act.softlob=false; }
+  if(!isHost && !isSolo){ localInput.jumpEdge=false; localInput.act.shoot=null; localInput.act.lob=false; localInput.act.tackle=false; localInput.act.softlob=false; localInput.act.push=false; localInput.act.dash=0; }
 
   stepRain(dt);
   handleModeChange(); updateHUD(); renderScene(dt);
@@ -1407,7 +1443,8 @@ function sendInput(){
   if(!conn||!connected) return;
   try{ conn.send({ t:'i', mv:[r2(localInput.mvx),r2(localInput.mvz)], y:r2(localInput.yaw), pt:r2(localInput.pitch),
     sp:localInput.sprint?1:0, j:localInput.jumpEdge?1:0, ch:r2(localInput.charge||0),
-    a:[ localInput.act.shoot==null?-1:localInput.act.shoot, localInput.act.lob?1:0, localInput.act.tackle?1:0, localInput.act.softlob?1:0 ],
+    a:[ localInput.act.shoot==null?-1:localInput.act.shoot, localInput.act.lob?1:0, localInput.act.tackle?1:0, localInput.act.softlob?1:0, localInput.act.push?1:0, localInput.act.dash|0 ],
+    tp: r2(localInput.tacklePow||0),
     pn: localInput.pen }); }catch(e){}
 }
 function buildViewHost(){
@@ -1449,7 +1486,7 @@ function clientUpdate(dt){
 }
 
 // ===================== RENDU =====================
-let lastBall={x:0,y:BALL_R,z:0}, replayCamA=0;
+let lastBall={x:0,y:BALL_R,z:0}, replayCamA=0, wallVisLocal=false;
 function renderScene(dt){
   // effet ralenti (subtil) : -50% saturation, léger flou (DOF simulée), zoom
   slowVis += ((slowmo>0?1:0) - slowVis) * Math.min(1, dt*6);
@@ -1477,18 +1514,22 @@ function renderScene(dt){
   if(pkAim.visible) pkAim.position.set(penAimX,penAimY,penGoalZ);
   if(pkDive.visible) pkDive.position.set(penDiveX,penDiveY,penGoalZ);
 
-  // zone de tir : visible seulement pour le joueur local, en possession, dans sa moitié
+  // zone de tir (joueur local) : apparaît en possession dans sa moitié, reste visible
+  // après le tir, et ne disparaît QUE lorsqu'on entre dans la moitié adverse.
   let showWall=false;
   if(inMatch() && (gmode==='play'||gmode==='restart')){
     const mt=myTeam(), lp=view.p[myIndex];
-    if(lp && (lp.z*teamGoalZS(mt))>0 && hasBallLocal()){
+    const inOwn = lp && (lp.z*teamGoalZS(mt))>0;
+    if(inOwn && hasBallLocal()) wallVisLocal=true;
+    if(!inOwn) wallVisLocal=false;     // entrée dans la moitié adverse → disparaît
+    if(wallVisLocal && inOwn){
       const gz=attackGoalZ(mt), s=gz>0?1:-1;
       shotWall.position.set(0,0,gz - s*0.45);
       const gap=shotGap[gz>0?1:0];
       for(const m of wallCells) m.visible=(m.userData.cell!==gap);
       showWall=true;
     }
-  }
+  } else wallVisLocal=false;
   shotWall.visible=showWall;
 
   updateCamera(dt);
@@ -1520,12 +1561,14 @@ function updateHUD(){
   elNameL.style.color=cL.txt; elNameR.style.color=cR.txt;
   const t=Math.max(0,timeLeft), mm=Math.floor(t/60), ss=Math.floor(t%60);
   elTimer.textContent=(overtime?'OT ':'')+mm+':'+(ss<10?'0':'')+ss;
-  const st=(isHost||isSolo)? (P[myIndex]?P[myIndex].stamina:100) : (view.stam[myIndex]||0);
-  elStam.style.width=clamp(st,0,100)+'%';
+  const st=(isHost||isSolo)? (P[myIndex]?P[myIndex].stamina:STAM_MAX) : (view.stam[myIndex]||0);
+  elStam.style.width=clamp(st/STAM_MAX*100,0,100)+'%';
   crosshair.style.display=(document.pointerLockElement===renderer.domElement && gmode!=='replay')?'block':'none';
 }
 function handleModeChange(){
   if(gmode===prevMode) return;
+  // à l'engagement : oriente la caméra du joueur vers la surface adverse
+  if(gmode==='countdown'){ const ag=attackGoalZ(myTeam()); localInput.yaw = ag>0?0:Math.PI; localInput.pitch=0.05; }
   if(gmode==='penalty'){ setLocalPenaltyRole();
     showPkHelp(penRole==='shooter' ? 'Vise à la souris · clic G maintenu = puissance · relâche = tir'
             : penRole==='gk' ? 'Clic G maintenu : trace ton plongeon à la souris · relâche = plonge'
@@ -1670,6 +1713,7 @@ function enterLobby(){
 document.getElementById('btnCreate').onclick=()=>{ showOnly(createPanel); startHost(); };
 document.getElementById('btnJoin').onclick=()=>{ showOnly(joinPanel); document.getElementById('codeInput').focus(); };
 document.getElementById('btnSolo').onclick=()=>{ startSolo(); };
+document.getElementById('btnTraining').onclick=()=>{ startTraining(); };
 document.getElementById('btnCreateBack').onclick=()=>{ netCleanup(); gmode='menu'; showOnly(mainMenu); };
 document.getElementById('btnJoinBack').onclick=()=>{ netCleanup(); gmode='menu'; showOnly(mainMenu); };
 document.getElementById('btnConnect').onclick=()=>{ const c=document.getElementById('codeInput').value.trim().toUpperCase();
@@ -1685,7 +1729,8 @@ document.getElementById('btnLobbyBack').onclick=()=>{ netCleanup(); gmode='menu'
 document.getElementById('btnResume').onclick=()=>{ hidePause(); if(inMatch()) renderer.domElement.requestPointerLock(); };
 document.getElementById('btnAbdicate').onclick=()=>{ abdicate(); };
 
-function startSolo(){ isSolo=true; isHost=true; myIndex=0; connected=false; enterLobby(); }
+function startSolo(){ isTraining=false; isSolo=true; isHost=true; myIndex=0; connected=false; enterLobby(); }
+function startTraining(){ isTraining=true; isSolo=true; isHost=true; myIndex=0; connected=false; enterLobby(); }
 
 // ===================== INIT =====================
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
