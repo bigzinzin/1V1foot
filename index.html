@@ -85,6 +85,10 @@
   #pausePanel { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
     z-index:30; background:rgba(8,12,18,.72); }
   #pausePanel.show { display:flex; }
+  #rulesPanel { position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:31; background:rgba(8,12,18,.82); }
+  #rulesPanel.show { display:flex; }
+  #rulesBody h3 { color:#ffd54a; font-size:15px; margin:14px 0 4px; }
+  #rulesBody ul { margin:4px 0; padding-left:20px; } #rulesBody li { margin:3px 0; }
   #btnAbdicate { background:#a23b3b !important; box-shadow:0 4px 0 #5e1f1f !important; color:#fff !important; }
 
   #controls { position:absolute; bottom:8px; right:14px; font-size:11px; opacity:.45;
@@ -119,6 +123,9 @@
   .map.opt { min-width:150px; }
   .map.opt .name { font-size:15px; }
   .map.opt .desc { display:block; font-size:11px; opacity:.6; margin-top:4px; line-height:1.35; font-weight:400; }
+  .country.opt { width:172px; }
+  .country.opt .cdesc { display:block; font-size:10px; opacity:.7; margin-top:4px; line-height:1.32; font-weight:500; }
+  .country.opt .cdesc b { color:#ffd54a; }
   .votepill { display:inline-block; font-size:10px; font-weight:800; letter-spacing:1px; padding:2px 6px;
     border-radius:6px; margin:3px 2px 0; background:#1b2430; }
   .votepill.me { background:#3a6b3a; } .votepill.opp { background:#6b3a3a; }
@@ -131,7 +138,7 @@
 <!-- MAIN MENU -->
 <div id="mainMenu" class="screen">
   <h1 class="logo">1V1 FOOT</h1>
-  <div class="tagline">STREET EDITION · v0.5 — coups spéciaux</div>
+  <div class="tagline">STREET EDITION · v0.6 — coups spéciaux &amp; mode standard</div>
   <button class="btn" id="btnCreate">CRÉER UNE ROOM</button>
   <button class="btn alt" id="btnJoin">REJOINDRE UNE ROOM</button>
   <button class="btn alt" id="btnSolo">SOLO (vs IA)</button>
@@ -183,6 +190,8 @@
     <h2>SALON DU MATCH</h2>
     <div class="lobsec">MODE DE JEU</div>
     <div class="grid" id="modeGrid"></div>
+    <div class="lobsec">CAPACITÉS SPÉCIALES</div>
+    <div class="grid" id="abilGrid"></div>
     <div class="lobsec">CHOISIS TON PAYS</div>
     <div class="grid" id="countryGrid"></div>
     <div class="lobsec">VOTE POUR LA MAP</div>
@@ -191,7 +200,17 @@
     <div style="margin-top:8px">
       <button class="btn" id="btnReady">PRÊT</button>
     </div>
+    <button class="btn alt small" id="btnRules" style="margin-top:8px">📖 Règles du jeu</button>
     <button class="btn alt small" id="btnLobbyBack" style="margin-top:8px">Quitter</button>
+  </div>
+</div>
+
+<!-- RÈGLES -->
+<div id="rulesPanel">
+  <div class="panel" style="max-width:640px;max-height:86vh;overflow-y:auto;text-align:left">
+    <h2 style="text-align:center">📖 RÈGLES DU JEU</h2>
+    <div id="rulesBody" style="font-size:13.5px;line-height:1.5"></div>
+    <div style="text-align:center"><button class="btn small" id="btnRulesClose" style="margin-top:14px">Fermer</button></div>
   </div>
 </div>
 
@@ -231,14 +250,14 @@
 <div id="pausePanel">
   <div class="panel">
     <h2>PAUSE</h2>
-    <div style="margin-bottom:12px;opacity:.8">Quitter le match en cours ?</div>
+    <div id="pauseAbil" style="margin-bottom:12px;font-size:14px;line-height:1.45;background:rgba(0,0,0,.3);padding:10px 14px;border-radius:10px"></div>
     <button class="btn" id="btnResume">REPRENDRE</button>
     <button class="btn alt small" id="btnAbdicate" style="margin-top:10px">ABDIQUER (forfait)</button>
   </div>
 </div>
 <div id="controls">
   ZQSD déplacer · Shift sprint · Espace saut/poussée · tête en l'air<br>
-  Clic G (ballon) tir orienté · Clic D lob · Ctrl/Cmd+Clic D petit lob<br>
+  Clic G (ballon) tir orienté · Clic D lob · Shift+Clic D petit lob<br>
   Clic D (sans ballon) tacle (maintenir = chargé) · Molette bas = roulette · Molette haut = sombrero<br>
   E = coup spécial du pays · Flèches = chat · Échap = pause · Souris caméra
 </div>
@@ -263,7 +282,7 @@ const GRAV = 22, JUMP_V = 7.2;
 const POSSESS = 1.5;
 const STAM_MAX = 105;                      // jauge d'endurance +5% (v0.3.x)
 const PUSH_FWD = 10.45;                     // poussée de balle (-5% global v0.4.x)
-const ROULETTE_SPEED = 12, ROULETTE_DUR = 0.54, ROULETTE_COST = 16, ROULETTE_CD = 2;  // roulette : zone d'immunité +8% + cooldown 2s
+const ROULETTE_SPEED = 12, ROULETTE_DUR = 0.54, ROULETTE_COST = 16, ROULETTE_CD = 3;  // roulette : immunité +8% + cooldown 3s (anti-spam)
 const SHOT_MIN = 15, SHOT_MAX = 29.1, LOB_FWD = 12, LOB_UP = 11;  // puissance max -3% (v0.3)
 const TACKLE_SPEED = 14, TACKLE_TIME = 0.55, TACKLE_CD = 1.0;
 const MATCH_TIME = 300;                    // 5 min
@@ -284,13 +303,13 @@ const COUNTRIES = [
 ];
 // Coups spéciaux (touche E) — un par pays, indexé comme COUNTRIES
 const ABILITIES = [
-  { name:'Crédit Social',         icon:'📈', cd:20, dur:7 },          // Chine : endurance max +30%
-  { name:'High Kick',             icon:'🦵', cd:30, dur:0 },          // Taiwan : dash+saut+genou, stun 2s
-  { name:'Corruption',            icon:'💵', cd:45, dur:3 },          // Bangladesh : immunité penalty 3s
-  { name:'Détroit',               icon:'🎯', cd:0,  dur:0, once:true },// Gibraltar : ouvre toute la zone de tir (1x)
-  { name:'Super Jump',            icon:'🦘', cd:20, dur:0 },          // Ottoman : saut + dash énorme
-  { name:'Ich Bin Ein Berliner',  icon:'💥', cd:50, dur:0 },          // RDA : onde de choc répulsive
-  { name:'Dopage',                icon:'⚡', cd:35, dur:4 },          // Techno : +vitesse/tir/tacle
+  { name:'Crédit Social',         icon:'📈', cd:20, dur:7, desc:'Endurance max +30% pendant 7s.' },                         // Chine
+  { name:'High Kick',             icon:'🦵', cd:20, dur:0, desc:'Dash + saut + genou : immobilise l’adversaire 2,8s et le recule de 3m.' },  // Taiwan (cd 30→20)
+  { name:'Corruption',            icon:'💵', cd:45, dur:3, desc:'Immunité aux penaltys 3s : tacler par derrière n’est plus sanctionné.' },  // Bangladesh
+  { name:'Détroit',               icon:'🎯', cd:0,  dur:0, once:true, desc:'Passe droit : ouvre toutes les cases de la zone de tir (usage unique).' },  // Gibraltar
+  { name:'Super Jump',            icon:'🦘', cd:60, dur:0, desc:'Énorme saut + dash de 15m vers l’avant (ballon collé).' },  // Ottoman (cd 20→60)
+  { name:'Ich Bin Ein Berliner',  icon:'💥', cd:50, dur:0, desc:'Onde de choc blanche qui propulse les adversaires de 10m.' },  // RDA
+  { name:'Dopage',                icon:'⚡', cd:35, dur:4, desc:'+23% vitesse, +10% puissance de tir, +10% portée de tacle chargé pendant 4s.' },  // Techno
 ];
 // Maps sélectionnables
 const MAPS = [
@@ -730,6 +749,8 @@ let specConns=[], netNP=2;           // connexions spectateurs (hôte) ; nb joue
 // Lobby (choix pays + vote map + mode)
 let myCountry=null, oppCountry=null, myVote=null, oppVote=null, myReady=false, oppReady=false;
 let myMode=0, oppMode=0;            // 0 = 1v1, 1 = 2v2 (préférence lobby)
+let myAbil=1;                       // 1 = avec capacités, 0 = mode standard (lobby)
+let matchAbilities=true;            // capacités actives pour le match en cours
 let chosenMap=0, kitCountry=[0,1];  // kitCountry indexé par ÉQUIPE
 
 // ---- Mode & équipes ----
@@ -743,7 +764,7 @@ function myTeam(){ return teamOf(myIndex); }
 function newPlayer(idx){
   return { idx, team:teamOf(idx), x:0,z:0,y:0, vx:0,vz:0,vy:0, yaw:0, onGround:true,
     stamina:STAM_MAX, tackleT:0, tackleCd:0, shotCd:0, stunT:0, anim:0, speed:0, charge:0, rouletteT:0, rouletteDir:1, rouletteCd:0, tackleHit:false,
-    abilCd:0, abilT:0, abilUsed:false, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0 };
+    abilCd:0, abilT:0, abilUsed:false, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0 };
 }
 let P=[ newPlayer(0), newPlayer(1) ];
 function setupPlayers(){
@@ -761,6 +782,8 @@ let slowmo=0;                       // chrono de ralenti (tir chargé > 75%)
 let slowVis=0;                      // intensité visuelle du ralenti (lissée)
 let skipReplay=false;               // skip du ralenti
 let forfeitTeam=-1;                 // équipe ayant abdiqué (forfait)
+let restartTeam=-1, protectBall=0;  // touche/sortie : zone de protection 6m autour du porteur
+const restartCenter={x:0,z:0};
 const shotGap=[0,0];                // case ouverte du mur "zone de tir" (par cage : [but0 z<0, but1 z>0])
 function randGap(){ shotGap[0]=(Math.random()*6)|0; shotGap[1]=(Math.random()*6)|0; }
 
@@ -797,6 +820,11 @@ const goalSnd=()=>{ beep(440,0.12,0.22); setTimeout(()=>beep(660,0.12,0.22),120)
 // ===================== PHYSIQUE / SIMULATION =====================
 function locomotion(p, inp, dt){
   p.yaw = inp.yaw;
+  if(p.knockT>0){   // propulsion (compétences) : déplacement horizontal imposé, gravité conservée
+    p.x += p.knockVx*dt; p.z += p.knockVz*dt; p.knockT-=dt; p.vx=p.knockVx; p.vz=p.knockVz;
+    p.vy -= GRAV*dt; p.y += p.vy*dt; if(p.y<=0){ p.y=0; p.vy=0; p.onGround=true; }
+    p.speed=Math.hypot(p.knockVx,p.knockVz); return;
+  }
   if(p.tackleT>0 || p.stunT>0){
     p.x += p.vx*dt; p.z += p.vz*dt;
     const fr = p.tackleT>0 ? 2.5 : 7;
@@ -806,7 +834,7 @@ function locomotion(p, inp, dt){
     if(mag>1){ mvx/=mag; mvz/=mag; }
     const canSprint = inp.sprint && p.stamina>1 && moving;
     const carry = (ball.owner===p.idx) ? CARRY_MUL : 1;   // plus lent avec le ballon
-    const dope = p.dope ? 1.16 : 1;                       // Dopage (Techno) : +16% vitesse
+    const dope = p.dope ? 1.23 : 1;                       // Dopage (Techno) : +23% vitesse
     const sp = (canSprint?SPRINT:WALK)*carry*dope;
     const dvx=mvx*sp, dvz=mvz*sp;
     p.vx += (dvx-p.vx)*Math.min(1,14*dt);
@@ -845,6 +873,7 @@ function ballControl(dt){
   let near=-1, nd=Infinity;
   for(let i=0;i<NP;i++){
     if(P[i].shotCd>0 || P[i].stunT>0 || P[i].tackleT>0) continue;
+    if(protectBall>0 && teamOf(i)!==restartTeam) continue;   // protection : seul le bénéficiaire peut prendre la balle
     const d=dist2(P[i].x,P[i].z, ball.x,ball.z);
     if(d<nd){ nd=d; near=i; }
   }
@@ -869,7 +898,7 @@ function ballControl(dt){
   for(let i=0;i<NP;i++){
     const p=P[i], inp=inputFor(i); if(!inp) continue;
     if(inp.act.tackle && p.tackleCd<=0 && p.tackleT<=0 && p.stamina>=TACKLE_COST){
-      const tpw=clamp(inp.tacklePow||0,0,1), mult=(1+0.23*tpw)*(p.dope?1.4:1);   // tacle chargé (+8%) · Dopage : portée +40%
+      const tpw=clamp(inp.tacklePow||0,0,1), mult=(1+0.23*tpw)*(p.dope?1.1:1);   // tacle chargé (+8%) · Dopage : portée +10%
       p.tackleT=TACKLE_TIME*mult; p.tackleCd=TACKLE_CD; p.stamina-=TACKLE_COST+3*tpw;
       const f=fwd(p.yaw); p.vx=f.x*TACKLE_SPEED*mult; p.vz=f.z*TACKLE_SPEED*mult; p.anim=2; p.tackleHit=false;
       if(ball.owner===i) ball.owner=null;
@@ -884,7 +913,7 @@ function ballControl(dt){
     const team=teamOf(oi), inOwnHalf=(p.z*teamGoalZS(team))>0;   // moitié défensive du tireur
     // active le mur "zone de tir" si on tire depuis sa propre moitié
     function armWall(){
-      if(p.detroit){ ball.walled=false; p.detroit=false; return; }   // Gibraltar Détroit : toutes les cases ouvertes
+      if(p.detroit){ ball.walled=false; return; }   // Gibraltar Détroit : zone de tir ouverte toute l'action (reset à la sortie)
       if(inOwnHalf){ ball.walled=true; ball.wallZ=attackGoalZ(team);
         ball.wallGap=shotGap[ball.wallZ>0?1:0]; } else ball.walled=false; }
     if(inp.act.shoot!=null){
@@ -899,8 +928,8 @@ function ballControl(dt){
       ball.vx=f.x*LOB_FWD; ball.vz=f.z*LOB_FWD; ball.vy=LOB_UP;
       p.shotCd=0.35; ball.owner=null; armWall(); beep(300,0.08,0.15);
     } else if(inp.act.softlob){
-      // petit lob : lève le ballon devant soi (pour ensuite faire une tête) — hauteur +25%
-      ball.vx=f.x*4.5; ball.vz=f.z*4.5; ball.vy=9.4;
+      // petit lob (Shift+clic D) : lève le ballon devant soi, peu vers l'avant (pour une tête)
+      ball.vx=f.x*2.5; ball.vz=f.z*2.5; ball.vy=9.4;
       ball.y=Math.max(ball.y,BALL_R+0.05); p.shotCd=0.3; ball.owner=null; beep(360,0.07,0.13);
     } else if(inp.act.push){
       // poussée de balle : knock vers l'avant. En sprint +30% et on ajoute la vitesse du joueur
@@ -919,7 +948,7 @@ function ballControl(dt){
         const d=inp.act.roulette, rx=-Math.cos(p.yaw), rz=Math.sin(p.yaw);
         p.vx = f.x*ROULETTE_SPEED + rx*d*ROULETTE_SPEED*0.6;
         p.vz = f.z*ROULETTE_SPEED + rz*d*ROULETTE_SPEED*0.6;
-        p.rouletteT=ROULETTE_DUR; p.rouletteDir=d; p.rouletteCd=ROULETTE_DUR+ROULETTE_CD; p.stamina-=ROULETTE_COST; beep(300,0.1,0.14);
+        p.rouletteT=ROULETTE_DUR; p.rouletteDir=d; p.rouletteCd=ROULETTE_CD; p.stamina-=ROULETTE_COST; beep(300,0.1,0.14);
       }
       // dribble : la balle colle devant le joueur
       const tx=p.x+f.x*0.82, tz=p.z+f.z*0.82;
@@ -953,7 +982,9 @@ function ballControl(dt){
       const oHadBall = (ball.lastTouch===ti && dist2(o.x,o.z,ball.x,ball.z)<2.4*2.4);
       const dirx=o.x-p.x, dirz=o.z-p.z; const of=fwd(o.yaw);
       const fromBehind = (dirx*of.x+dirz*of.z) > 0.35;
-      if(fromBehind && oHadBall && gmode==='play' && p.noPenT<=0){ p.tackleHit=true; startPenalty(ti); return; }
+      // penalty UNIQUEMENT si la faute a lieu dans la surface défendue par le tacleur
+      const zS=teamGoalZS(teamOf(i)), inBox=(o.z*zS > HL-6) && Math.abs(o.x) < 8.5;
+      if(fromBehind && oHadBall && gmode==='play' && p.noPenT<=0 && inBox){ p.tackleHit=true; startPenalty(ti); return; }
       else {
         p.tackleHit=true;
         o.stunT=0.45; const d=Math.hypot(dirx,dirz)||1;
@@ -969,11 +1000,25 @@ function ballPhysics(dt){
   if(ball.y<BALL_R){ ball.y=BALL_R; if(ball.vy<0) ball.vy=-ball.vy*0.5; if(Math.abs(ball.vy)<0.8)ball.vy=0;
     ball.vx*=(1-1.4*dt); ball.vz*=(1-1.4*dt);
   } else { ball.vx*=(1-0.25*dt); ball.vz*=(1-0.25*dt); }
+  // poteaux & barre des cages : rebond réaliste (rayon = demi-largeur du poteau 0.125 + ballon)
+  const POST_HALF=0.125, PR=BALL_R+POST_HALF;
   for(const zS of [1,-1]){
+    const pz=zS*HL;
+    // 2 poteaux verticaux
     for(const px of [-GOAL_W/2,GOAL_W/2]){
-      const d=dist2(ball.x,ball.z,px,zS*HL);
-      if(d<(BALL_R+0.18)**2 && ball.y<GOAL_H){ const dx=ball.x-px, dz=ball.z-zS*HL; const dn=Math.sqrt(d)||1;
-        ball.vx=dx/dn*Math.abs(ball.vx)*0.6+dx/dn*2; ball.vz=dz/dn*Math.abs(ball.vz)*0.6; }
+      const dx=ball.x-px, dz=ball.z-pz, d=Math.hypot(dx,dz);
+      if(d<PR && ball.y<GOAL_H+BALL_R){
+        const nx=d>0.001?dx/d:1, nz=d>0.001?dz/d:0;
+        ball.x=px+nx*PR; ball.z=pz+nz*PR;
+        const vdot=ball.vx*nx+ball.vz*nz;
+        if(vdot<0){ ball.vx-=2*vdot*nx; ball.vz-=2*vdot*nz; ball.vx*=0.7; ball.vz*=0.7; beep(150,0.05,0.12); }
+      }
+    }
+    // barre transversale (à la hauteur GOAL_H, sur la ligne de but)
+    if(Math.abs(ball.x)<GOAL_W/2+POST_HALF && Math.abs(ball.z-pz)<PR && Math.abs(ball.y-GOAL_H)<PR){
+      const ny=ball.y>GOAL_H?1:-1; ball.y=GOAL_H+ny*PR;
+      if(ball.vy*ny<0){ ball.vy=-ball.vy*0.6; }
+      const nz=ball.z>pz?1:-1; if(ball.vz*nz<0){ ball.vz=-ball.vz*0.6; beep(150,0.05,0.12); }
     }
   }
   // mur "zone de tir" : 5 cases pleines (rebond) + 1 case ouverte (but)
@@ -1019,15 +1064,30 @@ function nearestOfTeam(team,x,z){ let bi=-1,best=Infinity;
 
 function setRestart(bx,bz,awardTeam){
   ball.x=bx; ball.z=bz; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.owner=null; ball.walled=false;
+  for(const pp of P) pp.detroit=false;                       // la sortie clôt l'effet Détroit
   const awardIdx=nearestOfTeam(awardTeam,bx,bz); ball.lastTouch=awardIdx;
   const aw=P[awardIdx];
   const toC={x:-bx, z:-bz}; const n=Math.hypot(toC.x,toC.z)||1;
   aw.x=bx - toC.x/n*1.0; aw.z=bz - toC.z/n*1.0; aw.vx=aw.vz=0;
   aw.yaw=yawTo(toC.x/n, toC.z/n);
+  // les adversaires sont repoussés hors de la zone de protection (6m)
   let pushed=0;
   for(let k=0;k<NP;k++){ if(teamOf(k)===awardTeam) continue;
-    if(dist2(P[k].x,P[k].z,bx,bz)<5*5){ P[k].x=bx+toC.x/n*5+(pushed?3:-3); P[k].z=bz+toC.z/n*5; P[k].vx=P[k].vz=0; pushed++; } }
+    if(dist2(P[k].x,P[k].z,bx,bz)<6*6){ const nx=toC.x/n, nz=toC.z/n;
+      P[k].x=bx+nx*6.2+(pushed?3:-3); P[k].z=bz+nz*6.2; P[k].vx=P[k].vz=0; pushed++; } }
+  restartTeam=awardTeam; restartCenter.x=bx; restartCenter.z=bz; protectBall=3.0;   // protection jusqu'à ce que la balle soit jouée
   randGap(); gmode='restart'; restartT=0.8; whistle();
+}
+// touche/sortie : l'adversaire qui ne bénéficie pas reste hors d'une zone de 6m autour du ballon,
+// jusqu'à ce que la balle soit jouée (sortie de la zone) ou expiration.
+function stepProtection(dt){
+  if(protectBall<=0) return;
+  protectBall-=dt;
+  if(dist2(ball.x,ball.z,restartCenter.x,restartCenter.z) > 6*6){ protectBall=0; return; }   // balle jouée
+  for(let k=0;k<NP;k++){ if(teamOf(k)===restartTeam) continue;
+    const dx=P[k].x-ball.x, dz=P[k].z-ball.z, d=Math.hypot(dx,dz);
+    if(d<6){ const nx=d>0.001?dx/d:1, nz=d>0.001?dz/d:0;
+      P[k].x=ball.x+nx*6; P[k].z=ball.z+nz*6; P[k].vx=0; P[k].vz=0; } }
 }
 function checkRules(){
   if(gmode!=='play') return;
@@ -1111,9 +1171,15 @@ function kickoff(cd){
     P[0].x=0; P[0].z=-adv; P[0].yaw=0;
     P[1].x=0; P[1].z= adv; P[1].yaw=Math.PI;
   }
-  for(const p of P){ p.y=0; p.vx=p.vz=p.vy=0; p.tackleT=0; p.tackleCd=0; p.shotCd=0; p.stunT=0; p.stamina=STAM_MAX; p.anim=0; p.charge=0; }
+  for(const p of P){ p.y=0; p.vx=p.vz=p.vy=0; p.tackleT=0; p.tackleCd=0; p.shotCd=0; p.stunT=0; p.stamina=STAM_MAX; p.anim=0; p.charge=0;
+    p.detroit=false; p.knockT=0; }
   // ballon au sol au centre (engagement classique, course au ballon)
   ball.x=0; ball.z=0; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.lastTouch=-1; ball.owner=null; ball.walled=false;
+  protectBall=0; restartTeam=-1;
+  if(isTraining){   // mannequin au milieu du terrain (cible pour tester les capacités), ballon vers le joueur
+    const dummy=mode2v2?2:1; if(P[dummy]){ P[dummy].x=0; P[dummy].z=0; P[dummy].yaw=Math.PI; }
+    ball.z=-4;
+  }
   randGap(); gmode='countdown'; cdT=cd; hideBanner();
 }
 function startMatch(){ setupPlayers(); score=[0,0]; timeLeft=MATCH_TIME; overtime=false; forfeitTeam=-1; hidePause(); rbuf.length=0; hideEnd(); kickoff(3); }
@@ -1135,12 +1201,13 @@ function stepSim(dt){
     }
     runActors(dt);
     ballControl(dt); ballPhysics(dt); separatePlayers();
+    stepProtection(dt);
     for(const p of P) clampToField(p);
     recordReplay(); checkRules(); clearActs();
     return;
   }
   if(gmode==='restart'){
-    restartT-=dt; runActors(dt); separatePlayers();
+    restartT-=dt; runActors(dt); separatePlayers(); stepProtection(dt);
     for(const p of P) clampToField(p);
     clearActs();
     if(restartT<=0){ gmode='play'; }
@@ -1166,25 +1233,27 @@ function stepSim(dt){
 function activateAbility(i){
   const p=P[i], country=kitCountry[teamOf(i)], ab=ABILITIES[country];
   if(!ab) return;
+  if(!matchAbilities) return;
   if(p.abilCd>0) return;
-  if(ab.once && p.abilUsed) return;
+  if(ab.once && p.abilUsed && !isTraining) return;
   if(p.stunT>0) return;
-  p.abilCd=ab.cd; p.abilT=ab.dur; p.abilUsed=true; p.abilFlash=0.7;
+  p.abilCd = isTraining?0:ab.cd; p.abilT=ab.dur; p.abilUsed=true; p.abilFlash=0.7;
   const f=fwd(p.yaw);
   switch(country){
     case 0:  p.stamMax=Math.round(STAM_MAX*1.3); p.stamina=Math.min(p.stamMax,p.stamina+10); break;   // Chine : endurance max +30%
-    case 1:{ // Taiwan : High Kick — dash + saut + genou
-      p.vx=f.x*17; p.vz=f.z*17; p.vy=JUMP_V*0.9; p.onGround=false;
+    case 1:{ // Taiwan : High Kick — dash + saut + genou (recule l'adversaire de 3m, stun 2.8s)
+      p.vy=JUMP_V*0.9; p.onGround=false; p.knockT=0.42; p.knockVx=f.x*22; p.knockVz=f.z*22;  // dash +3m
       const o=nearestOpponent(i);
-      if(o>=0 && dist2(p.x,p.z,P[o].x,P[o].z)<6*6){ P[o].stunT=Math.max(P[o].stunT,2); P[o].vx+=f.x*5; P[o].vz+=f.z*5; }
+      if(o>=0 && dist2(p.x,p.z,P[o].x,P[o].z)<6*6){ P[o].stunT=Math.max(P[o].stunT,2.8);
+        P[o].knockT=0.3; P[o].knockVx=f.x*10; P[o].knockVz=f.z*10; }   // 3m vers l'arrière
       break; }
     case 2:  p.noPenT=3; break;                                            // Bangladesh : Corruption
-    case 3:  p.detroit=true; break;                                        // Gibraltar : Détroit (1x)
-    case 4:  p.vy=JUMP_V*1.9; p.onGround=false; p.vx+=f.x*11; p.vz+=f.z*11; break;  // Ottoman : Super Jump
-    case 5:{ // RDA : onde de choc répulsive
+    case 3:  p.detroit=true; break;                                        // Gibraltar : Détroit (toute l'action)
+    case 4:  p.vy=JUMP_V*1.9; p.onGround=false; p.knockT=0.5; p.knockVx=f.x*30; p.knockVz=f.z*30; break;  // Ottoman : Super Jump (dash +15m, ballon collé)
+    case 5:{ // RDA : onde de choc — propulse les adversaires de 10m vers l'arrière
       for(let k=0;k<NP;k++){ if(teamOf(k)===teamOf(i)) continue;
         const dx=P[k].x-p.x, dz=P[k].z-p.z, d=Math.hypot(dx,dz)||1;
-        if(d<9){ const force=(9-d)/9*18; P[k].vx+=dx/d*force; P[k].vz+=dz/d*force; P[k].stunT=Math.max(P[k].stunT,0.5); } }
+        if(d<11){ P[k].knockT=0.5; P[k].knockVx=dx/d*20; P[k].knockVz=dz/d*20; P[k].stunT=Math.max(P[k].stunT,0.7); } }  // 20*0.5=10m
       shockwaveAt(p.x,p.z); break; }
     case 6:  p.dope=true; break;                                           // Techno : Dopage
   }
@@ -1314,8 +1383,14 @@ function updateAI(dt){
         st.shootCd=1.5;
       }
     } else if(chaser){
-      setAImove(i, ball.x*0.8, ball.z - gs*1.4, true);
-      me.yaw = yawTo(inp.mvx, inp.mvz);
+      // remise en jeu (touche/corner/sortie de but) pour son équipe : aller DIRECTEMENT au ballon
+      // (sinon l'IA partait se placer et laissait le ballon arrêté → "l'IA attend")
+      if((gmode==='restart' || protectBall>0) && restartTeam===t){
+        setAImove(i, ball.x, ball.z, true); me.yaw = yawTo(ball.x-me.x, ball.z-me.z);
+      } else {
+        setAImove(i, ball.x*0.8, ball.z - gs*1.4, true);
+        me.yaw = yawTo(inp.mvx, inp.mvz);
+      }
     } else {
       // soutien : se replier entre le ballon et son propre but
       const tx = clamp(ball.x*0.5, -10, 10);
@@ -1326,9 +1401,9 @@ function updateAI(dt){
     // pressing modéré sur le porteur adverse (seulement le joueur le plus proche du ballon)
     if(oppNear>=0 && !haveBall && chaser){
       const o=P[oppNear], dOpp=Math.hypot(o.x-me.x, o.z-me.z);
-      const prob = oppHasBall ? 0.045 : 0.015;   // moins agressif sur le porteur
-      if(dOpp<2.2 && dOppBall<1.8 && st.tackleCd<=0 && Math.random()<prob){
-        me.yaw=yawTo(o.x-me.x, o.z-me.z); inp.act.tackle=true; inp.tacklePow=oppHasBall?0.4:0; st.tackleCd=2.6;
+      const prob = oppHasBall ? 0.028 : 0.01;   // encore moins agressif sur le porteur
+      if(dOpp<2.0 && dOppBall<1.7 && st.tackleCd<=0 && Math.random()<prob){
+        me.yaw=yawTo(o.x-me.x, o.z-me.z); inp.act.tackle=true; inp.tacklePow=oppHasBall?0.4:0; st.tackleCd=3.4;
       }
     }
     inp.yaw=me.yaw;
@@ -1364,7 +1439,15 @@ function sendChat(text){ showChat(text,true); if(conn&&connected){ try{conn.send
 // ----- Pause / abdication (forfait) -----
 const pausePanel=document.getElementById('pausePanel');
 function hidePause(){ pausePanel.classList.remove('show'); }
-function togglePause(){ if(pausePanel.classList.contains('show')) hidePause(); else pausePanel.classList.add('show'); }
+function showPauseAbil(){
+  const el=document.getElementById('pauseAbil'); if(!el) return;
+  if(!matchAbilities){ el.innerHTML='<b>Mode standard</b> — aucune capacité spéciale dans ce match.'; return; }
+  const ab=ABILITIES[kitCountry[myTeam()]];
+  el.innerHTML = ab ? ('<div style="font-size:16px;font-weight:800;color:#ffd54a">'+ab.icon+' '+ab.name+'</div>'
+    +'<div style="margin-top:6px">'+ab.desc+'</div>'
+    +'<div style="margin-top:6px;opacity:.7;font-size:12px">'+(ab.once?'Usage unique':'Cooldown : '+ab.cd+'s')+' · touche E</div>') : '';
+}
+function togglePause(){ if(pausePanel.classList.contains('show')) hidePause(); else { showPauseAbil(); pausePanel.classList.add('show'); } }
 function abdicate(){
   hidePause(); forfeitTeam=myTeam();
   if(conn&&connected){ try{conn.send({t:'forfeit',team:forfeitTeam});}catch(_){} }
@@ -1426,7 +1509,7 @@ addEventListener('mousedown',e=>{
   const ball=hasBallLocal();
   if(e.button===0){ if(ball){ charging=true; chargeT=0; powWrap.style.display='block'; } }
   else if(e.button===2){
-    if(ball){ if(e.ctrlKey||e.metaKey) localInput.act.softlob=true; else localInput.act.lob=true; }
+    if(ball){ if(e.shiftKey||e.ctrlKey||e.metaKey) localInput.act.softlob=true; else localInput.act.lob=true; }
     else { chargingTackle=true; tackleChargeT=0; }   // charge le tacle (relâche = tacle)
   }
 });
@@ -1607,7 +1690,7 @@ function onData(msg){
     setStatus('joinStatus','Spectateur connecté !','#30c060'); enterGame(); return; }
   if(msg.t==='lobby'){
     oppCountry=(msg.c==null?null:msg.c); oppVote=(msg.v==null?null:msg.v); oppReady=!!msg.r; oppMode=msg.md|0;
-    if(!isHost){ myMode=oppMode; }   // le mode est décidé par l'hôte
+    if(!isHost){ myMode=oppMode; if(msg.ab!=null) myAbil=msg.ab; }   // mode & capacités décidés par l'hôte
     // si le client a choisi le même pays que l'hôte, il doit céder (hôte = autorité)
     if(!isHost && myCountry!=null && oppCountry===myCountry){ myCountry=null; myReady=false; renderLobby(); sendLobby(); return; }
     renderLobby();
@@ -1615,7 +1698,7 @@ function onData(msg){
     return;
   }
   if(msg.t==='go'){
-    mode2v2 = !!msg.md; setupPlayers(); netNP=NP;
+    mode2v2 = !!msg.md; matchAbilities = (msg.ab==null?true:!!msg.ab); setupPlayers(); netNP=NP;
     if(!isSpectator) myIndex=clientIndex;
     applyMatchVisuals(msg.map, msg.c); enterGame();
     return;
@@ -1770,7 +1853,7 @@ function renderScene(dt){
   else if(renderer.domElement.style.filter){ renderer.domElement.style.filter=''; }
   for(let i=0;i<playerMesh.length;i++){
     const mesh=playerMesh[i], aura=auraMesh[i];
-    if(i>=NP || (isTraining && i!==0)){ mesh.visible=false; continue; }   // cache l'adversaire en entraînement
+    if(i>=NP){ mesh.visible=false; continue; }   // en entraînement, l'adversaire = mannequin (visible)
     mesh.visible=true;
     const v=view.p[i];
     // roulette : 360° sur l'axe
@@ -1806,7 +1889,8 @@ function renderScene(dt){
   // zone de tir (joueur local) : apparaît en possession dans sa moitié, reste visible
   // après le tir, et ne disparaît QUE lorsqu'on entre dans la moitié adverse.
   let showWall=false;
-  if(!isSpectator && inMatch() && (gmode==='play'||gmode==='restart')){
+  const myDetroit = (isHost||isSolo) && P[myIndex] && P[myIndex].detroit;   // Détroit : zone de tir ouverte → pas de cases
+  if(!isSpectator && !myDetroit && inMatch() && (gmode==='play'||gmode==='restart')){
     const mt=myTeam(), lp=view.p[myIndex];
     const inOwn = lp && (lp.z*teamGoalZS(mt))>0;
     if(inOwn && hasBallLocal()) wallVisLocal=true;
@@ -1873,12 +1957,12 @@ function updateHUD(){
   const st=(isHost||isSolo)? (P[myIndex]?P[myIndex].stamina:STAM_MAX) : (view.stam[myIndex]||0);
   elStam.style.width=clamp(st/STAM_MAX*100,0,100)+'%';
   crosshair.style.display=(document.pointerLockElement===renderer.domElement && gmode!=='replay')?'block':'none';
-  // coup spécial : logo + état (cooldown / prêt / actif)
+  // coup spécial : logo + état (cooldown / prêt / actif) — masqué en mode standard
   if(abilHud){ const ab=ABILITIES[kitCountry[mt]];
-    if(ab){ abilHud.style.display='flex';
+    if(ab && matchAbilities){ abilHud.style.display='flex';
       const pp=(isHost||isSolo)?P[myIndex]:null;
       const cd=pp?Math.max(0,pp.abilCd):0, active=pp?(pp.abilT>0):!!(view.p[myIndex]&&view.p[myIndex].abil);
-      const used=ab.once && pp && pp.abilUsed;
+      const used=ab.once && pp && pp.abilUsed && !isTraining;
       const st2 = active?'ACTIF' : (used?'utilisé' : (cd>0?Math.ceil(cd)+'s':'PRÊT (E)'));
       abilHud.innerHTML='<span class="ic">'+ab.icon+'</span>'+ab.name+' · <span class="cd">'+st2+'</span>';
       abilHud.classList.toggle('ready', cd<=0 && !used && !active);
@@ -1925,6 +2009,7 @@ function hideEnd(){ endScreen.classList.add('hidden'); }
 
 // ===================== LOBBY (mode + pays + vote map) =====================
 const modeGrid=document.getElementById('modeGrid');
+const abilGrid=document.getElementById('abilGrid');
 const countryGrid=document.getElementById('countryGrid');
 const mapGrid=document.getElementById('mapGrid');
 const lobbyStatus=document.getElementById('lobbyStatus');
@@ -1938,10 +2023,19 @@ function buildLobbyUI(){
     el.onclick=()=>selectMode(i);
     modeGrid.appendChild(el);
   });
+  abilGrid.innerHTML='';
+  ['🦸 Avec capacités','⚽ Standard (sans)'].forEach((nm,i)=>{
+    const el=document.createElement('div'); el.className='opt'; el.dataset.i=(1-i);   // i=0→avec(1), i=1→sans(0)
+    el.innerHTML='<span class="name">'+nm+'</span><span class="meta"></span>';
+    el.onclick=()=>selectAbil(1-i);
+    abilGrid.appendChild(el);
+  });
   countryGrid.innerHTML='';
   COUNTRIES.forEach((c,i)=>{
-    const el=document.createElement('div'); el.className='opt'; el.dataset.i=i;
-    el.innerHTML='<span class="sw" style="background:#'+c.col.toString(16).padStart(6,'0')+'"></span>'+c.flag+' '+c.name+'<span class="meta"></span>';
+    const el=document.createElement('div'); el.className='opt country'; el.dataset.i=i;
+    const ab=ABILITIES[i];
+    el.innerHTML='<span class="sw" style="background:#'+c.col.toString(16).padStart(6,'0')+'"></span>'+c.flag+' '+c.name+
+      '<span class="cdesc">'+ab.icon+' <b>'+ab.name+'</b> — '+ab.desc+'</span><span class="meta"></span>';
     el.onclick=()=>selectCountry(i);
     countryGrid.appendChild(el);
   });
@@ -1959,6 +2053,11 @@ function renderLobby(){
     el.classList.toggle('sel', myMode===i);
     el.classList.toggle('taken', clientLocked);
     el.querySelector('.meta').textContent = (clientLocked && myMode===i) ? '(choisi par l’hôte)' : '';
+  });
+  [...abilGrid.children].forEach(el=>{ const i=+el.dataset.i;
+    el.classList.toggle('sel', myAbil===i);
+    el.classList.toggle('taken', clientLocked || isTraining);
+    el.querySelector('.meta').textContent = isTraining ? (i===1?'(forcé)':'') : ((clientLocked && myAbil===i) ? '(hôte)' : '');
   });
   [...countryGrid.children].forEach(el=>{
     const i=+el.dataset.i;
@@ -1987,6 +2086,7 @@ function renderLobby(){
   lobbyStatus.textContent=s;
 }
 function selectMode(i){ if(!isSolo && !isHost) return; myMode=i; myReady=false; sendLobby(); renderLobby(); }
+function selectAbil(v){ if((!isSolo && !isHost) || isTraining) return; myAbil=v; myReady=false; sendLobby(); renderLobby(); }
 function selectCountry(i){
   if(!isSolo && oppCountry===i && oppCountry!==myCountry) return; // déjà pris
   myCountry=i; myReady=false; sendLobby(); renderLobby();
@@ -2002,7 +2102,7 @@ function clickReady(){
   sendLobby(); renderLobby();
   if(isHost||isSolo) maybeStart();
 }
-function sendLobby(){ if(conn&&connected){ try{ conn.send({t:'lobby', c:myCountry, v:myVote, r:myReady, md:myMode}); }catch(e){} } }
+function sendLobby(){ if(conn&&connected){ try{ conn.send({t:'lobby', c:myCountry, v:myVote, r:myReady, md:myMode, ab:myAbil}); }catch(e){} } }
 function resolveVote(a,b){ return a===b ? a : (Math.random()<0.5?a:b); }
 function applyMatchVisuals(mapIdx, countries){
   chosenMap=mapIdx; kitCountry=countries.slice(); setMap(mapIdx);
@@ -2017,12 +2117,13 @@ function maybeStart(){
   if(myCountry==null || oppCountry==null || myCountry===oppCountry) return;
   if(myVote==null || oppVote==null) return;
   mode2v2 = (myMode===1);            // hôte/solo décide du mode
+  matchAbilities = isTraining ? true : (myAbil===1);   // capacités (forcées en entraînement)
   setupPlayers();
   const countries=[null,null];       // par ÉQUIPE
   countries[myTeam()]=myCountry; countries[1-myTeam()]=oppCountry;
   const mapIdx=resolveVote(myVote,oppVote);
   applyMatchVisuals(mapIdx, countries);
-  if(!isSolo){ const goMsg={t:'go', map:mapIdx, c:countries, md:mode2v2?1:0};
+  if(!isSolo){ const goMsg={t:'go', map:mapIdx, c:countries, md:mode2v2?1:0, ab:matchAbilities?1:0};
     if(conn){ try{ conn.send(goMsg); }catch(e){} }
     for(const sc of specConns){ try{ sc.send(goMsg); }catch(e){} } }
   stopAdvertising();   // la room quitte la liste publique au coup d'envoi (spectateurs via code)
@@ -2050,13 +2151,39 @@ document.getElementById('btnRematch').onclick=()=>{ if(isHost||isSolo){
 document.getElementById('btnQuit').onclick=()=>{ netCleanup(); location.reload(); };
 btnReady.onclick=clickReady;
 document.getElementById('btnLobbyBack').onclick=()=>{ netCleanup(); gmode='menu'; showOnly(mainMenu); };
+const RULES_HTML=`
+<h3>But du jeu</h3>
+<ul><li>Match 1v1 ou 2v2 de 5 min. Le plus de buts gagne. Écart de 4 buts (manita) = fin anticipée. Égalité = prolongation au but en or.</li></ul>
+<h3>Contrôles</h3>
+<ul>
+<li><b>ZQSD</b> déplacer · <b>Shift</b> sprint (consomme l'endurance) · <b>Souris</b> caméra.</li>
+<li><b>Espace</b> : saut (tête en l'air) ; avec le ballon = poussée vers l'avant.</li>
+<li><b>Clic gauche</b> (ballon) : tir orienté à la souris, maintenir = puissance.</li>
+<li><b>Clic droit</b> : lob ; <b>Shift+clic droit</b> = petit lob (pour faire une tête) ; sans ballon = tacle (maintenir = tacle chargé, +portée).</li>
+<li><b>Molette bas</b> = roulette (360°, immunité aux tacles, cooldown 3s) · <b>Molette haut</b> = sombrero.</li>
+<li><b>E</b> = coup spécial du pays · <b>Flèches</b> = chat · <b>Échap</b> = pause (détail de la compétence).</li>
+</ul>
+<h3>Zone de tir</h3>
+<ul><li>Quand tu portes le ballon dans ta moitié, un mur de cases apparaît sur la cage adverse : seule la case ouverte permet de marquer (les autres font rebondir). Joue dans la surface adverse pour t'en affranchir.</li></ul>
+<h3>Tacles & penaltys</h3>
+<ul><li>Un tacle par derrière sur le porteur <b>dans la surface du tacleur</b> = penalty. Ailleurs = simple récupération du ballon. Un tacle à vide ou sur une roulette est puni (le tacleur tombe).</li></ul>
+<h3>Touches & sorties</h3>
+<ul><li>Sur une touche / sortie de but, l'équipe qui n'en bénéficie pas ne peut pas entrer dans une zone de 6m autour du porteur tant que la balle n'est pas jouée.</li></ul>
+<h3>Coups spéciaux (touche E)</h3>
+<ul>`+ABILITIES.map((a,i)=>'<li>'+a.icon+' <b>'+COUNTRIES[i].short+' — '+a.name+'</b> : '+a.desc+'</li>').join('')+`</ul>
+<h3>Modes</h3>
+<ul><li><b>Avec capacités</b> ou <b>Standard</b> (sans). <b>Entraînement</b> : capacités sans cooldown + mannequin au centre, balle aux pieds au clic molette. <b>Spectateur</b> : rejoins une partie en cours avec le code (caméras 1–5).</li></ul>`;
+const rulesPanel=document.getElementById('rulesPanel');
+document.getElementById('rulesBody').innerHTML=RULES_HTML;
+document.getElementById('btnRules').onclick=()=>rulesPanel.classList.add('show');
+document.getElementById('btnRulesClose').onclick=()=>rulesPanel.classList.remove('show');
 document.getElementById('btnResume').onclick=()=>{ hidePause(); if(inMatch()) renderer.domElement.requestPointerLock(); };
 document.getElementById('btnAbdicate').onclick=()=>{ abdicate(); };
 document.getElementById('btnVisPublic').onclick=()=>setRoomPublic(true);
 document.getElementById('btnVisPrivate').onclick=()=>setRoomPublic(false);
 
 function startSolo(){ isTraining=false; isSolo=true; isHost=true; myIndex=0; connected=false; enterLobby(); }
-function startTraining(){ isTraining=true; isSolo=true; isHost=true; myIndex=0; connected=false; enterLobby(); }
+function startTraining(){ isTraining=true; isSolo=true; isHost=true; myIndex=0; connected=false; myAbil=1; enterLobby(); }
 
 // ===================== INIT =====================
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
