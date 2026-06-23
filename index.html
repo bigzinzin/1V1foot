@@ -851,17 +851,10 @@ const MAP_TRACKS = ['sfx/prison.m4a','sfx/chine.m4a','sfx/airport.m4a','sfx/urss
 const MAP_START  = [0,0,0,0,0,25];                                                          // Base Spatiale (galaktik) démarre à 25s
 const mapMusic = MAP_TRACKS.map(src=>{ const a=new Audio(src); a.loop=true; a.volume=0.375; return a; });  // maps -30%, -15%, +5% (0.6→0.42→0.357→0.375)
 let curMapMusic=-1;
-// SFX de but : but.mp3 joué de 1.2s à 2.1s — gain Web Audio à 1.13 (+13%, l'élément <audio> plafonne à 1.0)
-const goalSfx = new Audio('sfx/but.m4a'); let goalSfxTimer=null, goalSfxGain=null;
-function ensureGoalGain(){ if(goalSfxGain) return;
-  try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
-    const src=actx.createMediaElementSource(goalSfx);
-    goalSfxGain=actx.createGain(); goalSfxGain.gain.value=1.13;
-    src.connect(goalSfxGain); goalSfxGain.connect(actx.destination);
-  }catch(e){ goalSfxGain=null; } }
+// SFX de but : but.m4a joué de 1.2s à 2.1s (volume d'origine, sans gain)
+const goalSfx = new Audio('sfx/but.m4a'); let goalSfxTimer=null;
 function playGoalSfx(){ if(!sfxOn) return;
-  try{ ensureGoalGain(); if(actx && actx.state==='suspended') actx.resume();
-    if(goalSfxTimer){ clearTimeout(goalSfxTimer); goalSfxTimer=null; }
+  try{ if(goalSfxTimer){ clearTimeout(goalSfxTimer); goalSfxTimer=null; }
     goalSfx.currentTime=1.2; goalSfx.play().catch(()=>{});
     goalSfxTimer=setTimeout(()=>{ try{ goalSfx.pause(); }catch(e){} }, 900); }catch(e){} }
 function stopMapMusic(){ for(const a of mapMusic){ try{ a.pause(); a.currentTime=0; }catch(e){} } curMapMusic=-1; }
