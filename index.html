@@ -317,12 +317,12 @@ const COUNTRIES = [
 // Coups spéciaux (touche E) — un par pays, indexé comme COUNTRIES
 const ABILITIES = [
   { name:'Crédit Social',         icon:'📈', cd:20, dur:10, desc:'Endurance restaurée à fond, max +35% et régén +50% pendant 10s.' },        // Chine
-  { name:'High Kick',             icon:'🦵', cd:20, dur:0, desc:'Dash + saut + genou : immobilise l’adversaire 2,1s et le recule de 3m.' },  // Taiwan (cd 30→20)
+  { name:'High Kick',             icon:'🦵', cd:20, dur:0, desc:'Dash + saut + genou : immobilise l’adversaire 1,7s et le recule de 3m.' },  // Taiwan (cd 30→20)
   { name:'Corruption',            icon:'💵', cd:45, dur:5, desc:'Immunité aux penaltys 5s : tacler par derrière n’est plus sanctionné.' },  // Bangladesh
-  { name:'Détroit',               icon:'🎯', cd:0,  dur:0, once:true, desc:'Passe droit : ouvre toutes les cases de la zone de tir (usage unique).' },  // Gibraltar
+  { name:'Détroit',               icon:'🎯', cd:0,  dur:0, uses:2, desc:'Passe droit : ouvre toutes les cases de la zone de tir (2 usages, sans cooldown).' },  // Gibraltar
   { name:'Super Jump',            icon:'🦘', cd:60, dur:0, desc:'Énorme saut + dash de 15m vers l’avant (ballon collé).' },  // Ottoman (cd 20→60)
   { name:'Ich Bin Ein Berliner',  icon:'💥', cd:50, dur:0, desc:'Onde de choc blanche qui propulse les adversaires de 10m.' },  // RDA
-  { name:'Dopage',                icon:'⚡', cd:35, dur:4, desc:'+23% vitesse, +10% puissance de tir, +10% portée de tacle chargé pendant 4s.' },  // Techno
+  { name:'Dopage',                icon:'⚡', cd:35, dur:6, desc:'+28% vitesse, +10% puissance de tir, +20% portée de tacle chargé pendant 6s.' },  // Techno
 ];
 // Cri d'activation affiché à l'écran de tous les joueurs (indexé comme COUNTRIES)
 const ABIL_TITLES = ['SOCIAL CREDIT !','高踢 !','CORRUPTED !','OPEN GATE !','SUPA JUMP !','GEHT MIR AUS DEM WEG!','SUBSTANCE DEPLOYMENT : CONFIRMED'];
@@ -789,7 +789,7 @@ function myTeam(){ return teamOf(myIndex); }
 function newPlayer(idx){
   return { idx, team:teamOf(idx), x:0,z:0,y:0, vx:0,vz:0,vy:0, yaw:0, onGround:true,
     stamina:STAM_MAX, tackleT:0, tackleCd:0, shotCd:0, stunT:0, anim:0, speed:0, charge:0, rouletteT:0, rouletteDir:1, rouletteCd:0, tackleHit:false,
-    abilCd:0, abilT:0, abilUsed:false, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0 };
+    abilCd:0, abilT:0, abilUsed:0, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0 };
 }
 let P=[ newPlayer(0), newPlayer(1) ];
 function setupPlayers(){
@@ -891,7 +891,7 @@ function locomotion(p, inp, dt){
     if(mag>1){ mvx/=mag; mvz/=mag; }
     const canSprint = inp.sprint && p.stamina>1 && moving;
     const carry = (ball.owner===p.idx) ? CARRY_MUL : 1;   // plus lent avec le ballon
-    const dope = p.dope ? 1.23 : 1;                       // Dopage (Techno) : +23% vitesse
+    const dope = p.dope ? 1.28 : 1;                       // Dopage (Techno) : +28% vitesse
     const sp = (canSprint?SPRINT:WALK)*carry*dope;
     const dvx=mvx*sp, dvz=mvz*sp;
     p.vx += (dvx-p.vx)*Math.min(1,14*dt);
@@ -956,7 +956,7 @@ function ballControl(dt){
   for(let i=0;i<NP;i++){
     const p=P[i], inp=inputFor(i); if(!inp) continue;
     if(inp.act.tackle && p.tackleCd<=0 && p.tackleT<=0 && p.stamina>=TACKLE_COST){
-      const tpw=clamp(inp.tacklePow||0,0,1), mult=(1+0.23*tpw)*(p.dope?1.1:1);   // tacle chargé (+8%) · Dopage : portée +10%
+      const tpw=clamp(inp.tacklePow||0,0,1), mult=(1+0.23*tpw)*(p.dope?1.2:1);   // tacle chargé (+8%) · Dopage : portée +20%
       p.tackleT=TACKLE_TIME*mult; p.tackleCd=TACKLE_CD; p.stamina-=TACKLE_COST+3*tpw;
       const f=fwd(p.yaw); p.vx=f.x*TACKLE_SPEED*mult; p.vz=f.z*TACKLE_SPEED*mult; p.anim=2; p.tackleHit=false;
       if(ball.owner===i) ball.owner=null;
@@ -1307,16 +1307,17 @@ function activateAbility(i){
   if(!ab) return;
   if(!matchAbilities) return;
   if(p.abilCd>0) return;
-  if(ab.once && p.abilUsed && !isTraining) return;
+  const maxUses = ab.uses || (ab.once ? 1 : Infinity);
+  if((p.abilUsed||0) >= maxUses && !isTraining) return;
   if(p.stunT>0) return;
-  p.abilCd = isTraining?0:ab.cd; p.abilT=ab.dur; p.abilUsed=true; p.abilFlash=0.7;
+  p.abilCd = isTraining?0:ab.cd; p.abilT=ab.dur; p.abilUsed=(p.abilUsed||0)+1; p.abilFlash=0.7;
   const f=fwd(p.yaw);
   switch(country){
     case 0:  p.stamMax=Math.round(STAM_MAX*1.35); p.regenMul=1.5; p.stamina=p.stamMax; break;   // Chine : endurance max +35%, récup +50%, restaurée intégralement
     case 1:{ // Taiwan : High Kick — dash + saut + genou (recule l'adversaire de 3m, stun 2.8s)
       p.vy=JUMP_V*0.9; p.onGround=false; p.knockT=0.42; p.knockVx=f.x*22; p.knockVz=f.z*22;  // dash +3m
       const o=nearestOpponent(i);
-      if(o>=0 && dist2(p.x,p.z,P[o].x,P[o].z)<6*6){ P[o].stunT=Math.max(P[o].stunT,2.1);
+      if(o>=0 && dist2(p.x,p.z,P[o].x,P[o].z)<6*6){ P[o].stunT=Math.max(P[o].stunT,1.7);
         P[o].knockT=0.3; P[o].knockVx=f.x*10; P[o].knockVz=f.z*10; }   // 3m vers l'arrière
       break; }
     case 2:  p.noPenT=5; break;                                            // Bangladesh : Corruption (immunité 5s)
@@ -1579,7 +1580,7 @@ function updateAI(dt){
       }
     }
     // IA : déclenche sa capacité spéciale au bon moment
-    if(matchAbilities && P[i].abilCd<=0 && !(ABILITIES[kitCountry[t]].once && P[i].abilUsed) && P[i].stunT<=0){
+    if(matchAbilities && P[i].abilCd<=0 && (P[i].abilUsed||0) < (ABILITIES[kitCountry[t]].uses || (ABILITIES[kitCountry[t]].once?1:Infinity)) && P[i].stunT<=0){
       const cc=kitCountry[t], dOppMe=oppNear>=0?Math.hypot(P[oppNear].x-me.x,P[oppNear].z-me.z):99; let cast=false;
       if(cc===0) cast = me.stamina<35;                                              // Crédit Social
       else if(cc===1) cast = oppHasBall && dOppMe<4.5;                               // High Kick sur le porteur proche
@@ -1630,7 +1631,7 @@ function showPauseAbil(){
   const ab=ABILITIES[kitCountry[myTeam()]];
   el.innerHTML = ab ? ('<div style="font-size:16px;font-weight:800;color:#ffd54a">'+ab.icon+' '+ab.name+'</div>'
     +'<div style="margin-top:6px">'+ab.desc+'</div>'
-    +'<div style="margin-top:6px;opacity:.7;font-size:12px">'+(ab.once?'Usage unique':'Cooldown : '+ab.cd+'s')+' · touche E</div>') : '';
+    +'<div style="margin-top:6px;opacity:.7;font-size:12px">'+(ab.uses?(ab.uses+' usages'):(ab.once?'Usage unique':'Cooldown : '+ab.cd+'s'))+' · touche E</div>') : '';
 }
 function togglePause(){ if(pausePanel.classList.contains('show')) hidePause();
   else { showPauseAbil(); pausePanel.classList.add('show'); if(isSolo) paused=true; } }   // solo (vs IA / training) : fige le match
@@ -2175,8 +2176,10 @@ function updateHUD(){
     if(ab && matchAbilities){ abilHud.style.display='flex';
       const pp=(isHost||isSolo)?P[myIndex]:null;
       const cd=pp?Math.max(0,pp.abilCd):0, active=pp?(pp.abilT>0):!!(view.p[myIndex]&&view.p[myIndex].abil);
-      const used=ab.once && pp && pp.abilUsed && !isTraining;
-      const st2 = active?'ACTIF' : (used?'utilisé' : (cd>0?Math.ceil(cd)+'s':'PRÊT (E)'));
+      const maxU = ab.uses || (ab.once?1:Infinity);
+      const used = pp && !isTraining && (pp.abilUsed||0) >= maxU;
+      const left = ab.uses && pp ? Math.max(0, ab.uses-(pp.abilUsed||0)) : 0;
+      const st2 = active?'ACTIF' : (used?'utilisé' : (ab.uses?('PRÊT (E) · '+left+' rest.'):(cd>0?Math.ceil(cd)+'s':'PRÊT (E)')));
       abilHud.innerHTML='<span class="ic">'+ab.icon+'</span>'+ab.name+' · <span class="cd">'+st2+'</span>';
       abilHud.classList.toggle('ready', cd<=0 && !used && !active);
     } else abilHud.style.display='none';
