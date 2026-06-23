@@ -846,13 +846,13 @@ const whistle=()=>{ beep(2100,0.12,0.18,'sine'); setTimeout(()=>beep(2300,0.16,0
 const goalSnd=()=>{ beep(440,0.12,0.22); setTimeout(()=>beep(660,0.12,0.22),120); setTimeout(()=>beep(880,0.25,0.22),240); playGoalSfx(); };
 
 // ===================== MUSIQUE ============================================
-const menuMusic = new Audio('sfx/menu.mp3'); menuMusic.loop=true; menuMusic.volume=0.756;   // lobby +15% puis +20% (0.55→0.63→0.756)
-const MAP_TRACKS = ['sfx/prison.mp3','sfx/chine.mp3','sfx/airport.mp3','sfx/urss.mp3','sfx/shenzhen.mp3','sfx/galaktik.mp3'];
+const menuMusic = new Audio('sfx/menu.m4a'); menuMusic.loop=true; menuMusic.volume=0.756;   // lobby +15% puis +20% (0.55→0.63→0.756)
+const MAP_TRACKS = ['sfx/prison.m4a','sfx/chine.m4a','sfx/airport.m4a','sfx/urss.m4a','sfx/shenzhen.m4a','sfx/galaktik.m4a'];
 const MAP_START  = [0,0,0,0,0,25];                                                          // Base Spatiale (galaktik) démarre à 25s
 const mapMusic = MAP_TRACKS.map(src=>{ const a=new Audio(src); a.loop=true; a.volume=0.375; return a; });  // maps -30%, -15%, +5% (0.6→0.42→0.357→0.375)
 let curMapMusic=-1;
 // SFX de but : but.mp3 joué de 1.2s à 2.1s — gain Web Audio à 1.13 (+13%, l'élément <audio> plafonne à 1.0)
-const goalSfx = new Audio('sfx/but.mp3'); let goalSfxTimer=null, goalSfxGain=null;
+const goalSfx = new Audio('sfx/but.m4a'); let goalSfxTimer=null, goalSfxGain=null;
 function ensureGoalGain(){ if(goalSfxGain) return;
   try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
     const src=actx.createMediaElementSource(goalSfx);
