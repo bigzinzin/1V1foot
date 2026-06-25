@@ -74,6 +74,9 @@
   #abilTitle { position:absolute; top:20%; left:0; right:0; text-align:center; pointer-events:none;
     font-size:56px; font-weight:900; letter-spacing:1px; color:#fff;
     text-shadow:0 4px 0 #000,0 6px 22px #000; opacity:0; transition:opacity .15s; z-index:13; }
+  #fogOverlay { position:absolute; inset:0; pointer-events:none; z-index:11; opacity:0;
+    transition:opacity .6s; background:radial-gradient(circle at 50% 55%, rgba(214,219,224,.86) 0%, rgba(206,212,218,.96) 55%, rgba(196,202,208,1) 100%); }
+  #fogOverlay.on { opacity:0.96; backdrop-filter:blur(5.3px); -webkit-backdrop-filter:blur(5.3px); }
   #replayTag { position:absolute; top:18px; left:18px; background:rgba(180,0,0,.85);
     padding:6px 14px; border-radius:8px; font-weight:800; letter-spacing:2px; display:none; z-index:12;}
   #pkHelp { position:absolute; bottom:70px; left:50%; transform:translateX(-50%); text-align:center;
@@ -248,6 +251,7 @@
   <div id="banner"></div>
   <div id="subBanner"></div>
   <div id="abilTitle"></div>
+  <div id="fogOverlay"></div>
   <div id="replayTag">● RALENTI</div>
   <div id="pkHelp"></div>
   <div id="chatMsg"></div>
@@ -317,6 +321,7 @@ const COUNTRIES = [
   { name:'Empire Ottoman', short:'OTTOMAN',   flag:'🇹🇷', col:0x1f8a4c, txt:'#54d98a' },  // vert
   { name:'Allemagne de l’Est', short:'RDA',   flag:'🇩🇪', col:0x6cc4e6, txt:'#9fe0f5' },  // bleu clair
   { name:'Technodroïdes',  short:'TECHNO',     flag:'🤖', col:0x9b4dd6, txt:'#c89bf0' },  // violet
+  { name:'Suriname',       short:'SURINAME',   flag:'🇸🇷', col:0xe8731f, txt:'#ff9d3c' },  // orange
 ];
 // Coups spéciaux (touche E) — un par pays, indexé comme COUNTRIES
 const ABILITIES = [
@@ -327,9 +332,11 @@ const ABILITIES = [
   { name:'Super Jump',            icon:'🦘', cd:60, dur:0, desc:'Énorme saut + dash de 15m vers l’avant (ballon collé).' },  // Ottoman (cd 20→60)
   { name:'Ich Bin Ein Berliner',  icon:'💥', cd:50, dur:0, desc:'Onde de choc blanche qui propulse les adversaires de 10m.' },  // RDA
   { name:'Dopage',                icon:'⚡', cd:35, dur:6, desc:'+28% vitesse, +10% puissance de tir, +20% portée de tacle chargé pendant 6s.' },  // Techno
+  { name:'Grabuge Tropical',      icon:'🌪️', cd:45, dur:10, desc:'Inflige un malus aléatoire à l’adversaire pendant 10s : Tempête, Insolation ou Brouillard.' },  // Suriname
 ];
 // Cri d'activation affiché à l'écran de tous les joueurs (indexé comme COUNTRIES)
-const ABIL_TITLES = ['SOCIAL CREDIT !','高踢 !','CORRUPTED !','OPEN GATE !','SUPA JUMP !','GEHT MIR AUS DEM WEG!','SUBSTANCE DEPLOYMENT : CONFIRMED'];
+const ABIL_TITLES = ['SOCIAL CREDIT !','高踢 !','CORRUPTED !','OPEN GATE !','SUPA JUMP !','GEHT MIR AUS DEM WEG!','SUBSTANCE DEPLOYMENT : CONFIRMED','GRABUGE TROPICAL'];
+const MALUS_TITLES = ['','TEMPÊTE','INSOLATION','BROUILLARD'];   // index = malus.type (1/2/3)
 // Maps sélectionnables
 const MAPS = [
   { name:'Prison',                desc:'Pluie & nuit, miradors, gardiens' },
@@ -727,6 +734,24 @@ shockMesh.rotation.x=-Math.PI/2; shockMesh.visible=false; scene.add(shockMesh);
 let shockT=0;
 function shockwaveAt(x,z){ shockMesh.position.set(x,0.3,z); shockT=0.6; shockMesh.visible=true; }
 
+// ===== Grabuge Tropical (Suriname) : malus aléatoire =====
+// type : 1 Tempête · 2 Insolation · 3 Brouillard. Liste = plusieurs malus peuvent cumuler (2v2, 2 Suriname).
+let maluses=[];   // [{type, t, caster, victim}]
+function malusActive(type){ return maluses.some(m=>m.type===type); }
+function insolTarget(idx){ return maluses.some(m=>m.type===2 && m.victim===idx); }
+const STORM_PUSH=5.52;   // poussée latérale (vers +x) dans la moitié du caster — +20%, +15% (4.0→4.8→5.52), résistible en allant à gauche (Q)
+// visuel tempête : plan translucide + stries de vent qui défilent
+const stormGroup=new THREE.Group(); stormGroup.visible=false;
+const stormPlane=new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, HL),
+  new THREE.MeshBasicMaterial({color:0xbfd8e8, transparent:true, opacity:0.16, side:THREE.DoubleSide, depthWrite:false}));
+stormPlane.rotation.x=-Math.PI/2; stormPlane.position.y=0.06; stormGroup.add(stormPlane);
+const stormStreaks=[];
+for(let s=0;s<14;s++){ const ln=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.04,0.09),
+  new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.5, depthWrite:false}));
+  ln.position.set(-HW + Math.random()*FIELD_W, 0.4+Math.random()*1.6, -HL/2 + Math.random()*HL);
+  stormGroup.add(ln); stormStreaks.push(ln); }
+scene.add(stormGroup);
+
 // ballon
 const ballMesh=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,18,14), lam(0xffffff));
 ballMesh.castShadow=true;
@@ -850,7 +875,7 @@ const whistle=()=>{ beep(2100,0.12,0.18,'sine'); setTimeout(()=>beep(2300,0.16,0
 const goalSnd=()=>{ beep(440,0.12,0.22); setTimeout(()=>beep(660,0.12,0.22),120); setTimeout(()=>beep(880,0.25,0.22),240); playGoalSfx(); };
 
 // ===================== MUSIQUE ============================================
-const menuMusic = new Audio('sfx/menu.m4a'); menuMusic.loop=true; menuMusic.volume=0.756;   // lobby +15% puis +20% (0.55→0.63→0.756)
+const menuMusic = new Audio('sfx/menu.m4a'); menuMusic.loop=true; menuMusic.volume=0.907;   // lobby +15%, +20%, +20% (0.55→0.63→0.756→0.907)
 const MAP_TRACKS = ['sfx/prison.m4a','sfx/chine.m4a','sfx/airport.m4a','sfx/urss.m4a','sfx/shenzhen.m4a','sfx/galaktik.m4a'];
 const MAP_START  = [0,0,0,0,0,25];                                                          // Base Spatiale (galaktik) démarre à 25s
 const MAP_VOL    = [0.375,0.375,0.375,0.375,0.3375,0.375];                                   // volume de base par map — Shenzhen (idx4) à -10%
@@ -900,7 +925,8 @@ function locomotion(p, inp, dt){
     const canSprint = inp.sprint && p.stamina>1 && moving;
     const carry = (ball.owner===p.idx) ? CARRY_MUL : 1;   // plus lent avec le ballon
     const dope = p.dope ? 1.28 : 1;                       // Dopage (Techno) : +28% vitesse
-    const sp = (canSprint?SPRINT:WALK)*carry*dope;
+    const insol = insolTarget(p.idx) ? 0.5 : 1;   // Insolation : -50% vitesse
+    const sp = (canSprint?SPRINT:WALK)*carry*dope*insol;
     const dvx=mvx*sp, dvz=mvz*sp;
     p.vx += (dvx-p.vx)*Math.min(1,14*dt);
     p.vz += (dvz-p.vz)*Math.min(1,14*dt);
@@ -909,7 +935,9 @@ function locomotion(p, inp, dt){
     else { let regen=STAM_REGEN*1.1*(p.regenMul||1); if(!moving) regen*=2; p.stamina+=regen*dt; }  // +10% passif, x2 à l'arrêt, +50% Crédit Social
     p.stamina=clamp(p.stamina,0,p.stamMax||STAM_MAX);
   }
-  if(inp.jumpEdge && p.onGround && p.tackleT<=0){ p.vy=JUMP_V*(p.dope?1.13:1); p.onGround=false; }  // Dopage : saut +13%
+  if(inp.jumpEdge && p.onGround && p.tackleT<=0){   // Dopage : saut +13% · Insolation : -50%
+    const insolJ = insolTarget(p.idx) ? 0.5 : 1;
+    p.vy=JUMP_V*(p.dope?1.13:1)*insolJ; p.onGround=false; }
   p.vy -= GRAV*dt; p.y += p.vy*dt;
   if(p.y<=0){ p.y=0; p.vy=0; p.onGround=true; }
   p.speed=Math.hypot(p.vx,p.vz);
@@ -1005,9 +1033,11 @@ function ballControl(dt){
       ball.vx=f.x*pf + p.vx*0.6; ball.vz=f.z*pf + p.vz*0.6; ball.vy=0.5;
       ball.y=BALL_R; p.shotCd=0.22; ball.owner=null; beep(220,0.05,0.12);
     } else if(inp.act.sombrero){
-      // sombrero (molette haut) : pique le ballon par-dessus l'adversaire, vers l'avant
-      ball.vx=f.x*7.2; ball.vz=f.z*7.2; ball.vy=11.5;
-      ball.y=Math.max(ball.y,BALL_R+0.05); p.shotCd=0.26; ball.owner=null; beep(440,0.07,0.13);
+      // sombrero (molette haut) : pique le ballon par-dessus l'adversaire, vers l'avant.
+      // On ajoute la vitesse du joueur pour que la balle le devance même en sprint (sinon il la rattrape
+      // et la recolle au sol → le sombrero ne montait pas en sprint). Hauteur identique avec/sans sprint.
+      ball.vx=f.x*7.2 + p.vx*0.5; ball.vz=f.z*7.2 + p.vz*0.5; ball.vy=11.5;
+      ball.y=Math.max(ball.y,BALL_R+0.05); p.shotCd=0.45; ball.owner=null; beep(440,0.07,0.13);
     } else {
       // roulette : 360° avec le ballon + immunité aux tacles, déclenchée à la molette du bas
       if(inp.act.roulette && p.rouletteT<=0 && p.rouletteCd<=0 && p.stamina>=ROULETTE_COST){
@@ -1057,6 +1087,18 @@ function ballControl(dt){
         o.stunT=0.45; const d=Math.hypot(dirx,dirz)||1;
         o.vx+=dirx/d*4; o.vz+=dirz/d*4; p.tackleT=0;
         if(oHadBall){ ball.owner=i; ball.lastTouch=i; }   // le tacleur récupère
+      }
+    }
+  }
+
+  // ---- 4bis) Collision tacle ↔ ballon LIBRE : un tacle qui percute un ballon non possédé le repousse
+  //      (ex. contrer un tir). N'agit PAS sur un ballon collé à un adversaire (géré en 4).
+  if(ball.owner==null){
+    for(let i=0;i<NP;i++){ const p=P[i]; if(p.tackleT<=0) continue;
+      if(ball.y<1.5 && dist2(p.x,p.z,ball.x,ball.z) < (PLAYER_R+BALL_R+0.35)*(PLAYER_R+BALL_R+0.35)){
+        const f=fwd(p.yaw);                                 // repoussé dans l'axe où regarde le tacleur
+        ball.vx=f.x*9; ball.vz=f.z*9; ball.vy=Math.max(ball.vy,2.6);
+        ball.lastTouch=i; p.tackleHit=true; beep(170,0.05,0.12); break;
       }
     }
   }
@@ -1219,9 +1261,12 @@ function setReplayTag(on){ elReplay.style.display=on?'block':'none'; netFx('repl
 function showPkHelp(t){ elPkHelp.textContent=t; elPkHelp.style.display=t?'block':'none'; }
 // Cri d'activation d'une compétence : affiché sur l'écran de tous les joueurs, dans la couleur du pays
 const elAbilTitle=document.getElementById('abilTitle'); let abilTitleTimer=null;
-function showAbilTitle(country){
+function showAbilTitle(country, casterIdx){
   if(country==null || !ABIL_TITLES[country]) return;
-  elAbilTitle.textContent=ABIL_TITLES[country];
+  // Suriname (Grabuge Tropical) : titre dynamique selon le malus tiré par CE joueur
+  let txt = ABIL_TITLES[country];
+  if(country===7){ const m=maluses.find(mm=>mm.caster===casterIdx); txt = (m && MALUS_TITLES[m.type]) || ABIL_TITLES[country]; }
+  elAbilTitle.textContent=txt;
   elAbilTitle.style.color=COUNTRIES[country].txt;
   elAbilTitle.style.opacity=1;
   clearTimeout(abilTitleTimer);
@@ -1251,6 +1296,7 @@ function kickoff(cd){
   }
   for(const p of P){ p.y=0; p.vx=p.vz=p.vy=0; p.tackleT=0; p.tackleCd=0; p.shotCd=0; p.stunT=0; p.stamina=STAM_MAX; p.anim=0; p.charge=0;
     p.detroit=false; p.knockT=0; }
+  maluses=[];   // un engagement annule tout malus en cours
   // ballon au sol au centre (engagement classique, course au ballon)
   ball.x=0; ball.z=0; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.lastTouch=-1; ball.owner=null; ball.walled=false;
   protectBall=0; restartTeam=-1;
@@ -1278,7 +1324,7 @@ function stepSim(dt){
       }
     }
     runActors(dt);
-    ballControl(dt); ballPhysics(dt); separatePlayers();
+    ballControl(dt); ballPhysics(dt); separatePlayers(); stepMalus(dt);
     if(ball.owner!=null){ if(ball.owner===ballHoldOwner) ballHoldT+=dt; else { ballHoldOwner=ball.owner; ballHoldT=0; } }
     else { ballHoldOwner=null; ballHoldT=0; }
     stepProtection(dt);
@@ -1337,10 +1383,25 @@ function activateAbility(i){
         if(d<11){ P[k].knockT=0.5; P[k].knockVx=dx/d*20; P[k].knockVz=dz/d*20; P[k].stunT=Math.max(P[k].stunT,0.7); } }  // 20*0.5=10m
       shockwaveAt(p.x,p.z); break; }
     case 6:  p.dope=true; break;                                           // Techno : Dopage
+    case 7:{ // Suriname : Grabuge Tropical — malus aléatoire à l'adversaire
+      const type=1+Math.floor(Math.random()*3);   // 1 Tempête / 2 Insolation / 3 Brouillard (équiprobables)
+      setMalus(type, i, nearestOpponent(i)); break; }
   }
   beep(680,0.16,0.2,'sawtooth'); beep(420,0.18,0.14);
   if(isSolo || i===myIndex) slowmo=Math.max(slowmo,1.0);   // coup spécial : léger ralenti 1.0s (+0.2s) + désaturation 50%
 }
+function setMalus(type, caster, victim){   // applique un malus (et le réplique aux clients/spectateurs)
+  maluses = maluses.filter(m=>m.caster!==caster);   // un caster n'a qu'un malus actif à la fois
+  maluses.push({type, t:10, caster, victim});
+  netFx('malus', {ty:type, c:caster, v:victim}, 10000);
+}
+function stepMalus(dt){   // effets de simulation (hôte/solo) — Tempête (Insolation gérée dans locomotion, Brouillard = écran)
+  const storm = maluses.find(m=>m.type===1);   // une seule poussée même si 2 tempêtes (même équipe)
+  if(storm){ const ct=teamOf(storm.caster), cz=teamGoalZS(ct);
+    for(let k=0;k<NP;k++){ if(teamOf(k)===ct) continue; if(P[k].z*cz>0) P[k].x += STORM_PUSH*dt; }  // adversaires dans la moitié du caster → poussés vers +x
+  }
+}
+function tickMalus(dt){ if(!maluses.length) return; for(const m of maluses) m.t-=dt; maluses = maluses.filter(m=>m.t>0); }
 function runActors(dt){
   for(let i=0;i<NP;i++){
     const p=P[i], inp=inputFor(i)||NULLINPUT;
@@ -1499,6 +1560,15 @@ function updateAI(dt){
       me.yaw=yawTo(ball.x-me.x||0.001, ball.z-me.z||0.001); inp.yaw=me.yaw;
       continue;
     }
+    // 2v2 — remise en jeu / sortie de but de NOTRE équipe : seul le tireur va au ballon, l'autre ATTEND
+    // (évite que les 2 IA foncent sur la balle et provoquent un CSC).
+    if(mode2v2 && protectBall>0 && restartTeam===t && !haveBall && i!==teamClosestToBall(t)){
+      const wx=clamp(-ball.x*0.5,-10,10), wz=gs*6;   // se poste dans la moitié offensive, décalé, pour recevoir
+      setAImove(i, wx, wz, false);
+      if(Math.hypot(wx-me.x, wz-me.z) < 2.2){ inp.mvx=inp.mvz=0; }   // arrivé → attend que la remise soit jouée
+      me.yaw=yawTo(ball.x-me.x||0.001, ball.z-me.z||0.001); inp.yaw=me.yaw; inp.act.tackle=false;
+      continue;
+    }
 
     if(haveBall){
       // touche / corner joué par l'IA : 80% du temps, passe lobée (loin) ou tir légèrement chargé (proche)
@@ -1536,8 +1606,9 @@ function updateAI(dt){
       setAImove(i, aimX, goalZ - gs*2.0, true);
       me.yaw = yawTo(aimX - me.x, goalZ - me.z);
       if(Math.abs(goalZ - me.z) < 17 && Math.abs(me.x) < 13 && st.shootCd<=0){
-        // 25% de chance de viser hors du cadre (tir raté)
-        const miss = Math.random()<0.25;
+        // 25% de chance de viser hors du cadre (tir raté) — +50% si l'IA est sous Brouillard (0.375)
+        const fogged = maluses.some(m=>m.type===3 && teamOf(i)!==teamOf(m.caster));
+        const miss = Math.random() < (fogged?0.375:0.25);
         const aimGoalX = miss ? (Math.random()<0.5?-1:1)*(GOAL_W/2 + 2 + Math.random()*3)
                               : (Math.random()*4-2);
         me.yaw = yawTo(aimGoalX - me.x, goalZ - me.z);
@@ -1597,6 +1668,7 @@ function updateAI(dt){
       else if(cc===4) cast = haveBall && Math.abs(goalZ-me.z)<24;                    // Super Jump pour avancer
       else if(cc===5){ let n=0; for(let k=0;k<NP;k++) if(teamOf(k)!==t && dist2(P[k].x,P[k].z,me.x,me.z)<6.5*6.5) n++; cast = n>0 && !haveBall; } // Berliner
       else if(cc===6) cast = haveBall && Math.abs(goalZ-me.z)<28;                    // Dopage en attaque
+      else if(cc===7) cast = oppHasBall;                                             // Grabuge Tropical : débuff le porteur adverse
       if(cast) inp.act.special=true;
     }
     inp.yaw=me.yaw;
@@ -1916,6 +1988,7 @@ function onData(msg){
     else if(msg.k==='hideB') hideBanner();
     else if(msg.k==='sub') showSub(msg.v, msg.ms||1400);
     else if(msg.k==='replay') elReplay.style.display=msg.v?'block':'none';
+    else if(msg.k==='malus' && msg.v){ maluses = maluses.filter(m=>m.caster!==msg.v.c); maluses.push({type:msg.v.ty, t:(msg.ms||10000)/1000, caster:msg.v.c, victim:msg.v.v}); }
     return;
   }
   if(msg.t==='chat'){ showChat(msg.m, false); return; }
@@ -1993,7 +2066,7 @@ function frame(now){
   }
   if(!isHost && !isSolo && !isSpectator){ localInput.jumpEdge=false; localInput.act.shoot=null; localInput.act.lob=false; localInput.act.tackle=false; localInput.act.softlob=false; localInput.act.push=false; localInput.act.roulette=0; localInput.act.sombrero=false; localInput.act.special=false; localInput.act.dash=false; }
 
-  stepRain(dt);
+  stepRain(dt); tickMalus(dt);
   handleModeChange(); updateHUD(); renderScene(dt);
 }
 function sendInput(){
@@ -2055,6 +2128,8 @@ function specUpdate(dt){   // spectateur : recopie l'état réseau dans la vue (
 // ===================== RENDU =====================
 let lastBall={x:0,y:BALL_R,z:0}, replayCamA=0, wallVisLocal=false;
 const prevAbil=[0,0,0,0];   // détection du front montant de v.abil par joueur (cri d'activation)
+let blinkPhase=0;           // clignotement (insolation)
+const elFog=document.getElementById('fogOverlay');
 function renderScene(dt){
   // pause (solo) : image figée désaturée
   if(paused){ renderer.domElement.style.filter='saturate(0.3) brightness(0.8)'; }
@@ -2071,7 +2146,7 @@ function renderScene(dt){
     mesh.visible=true;
     const v=view.p[i];
     // front montant de la compétence (v.abil 0→1) → cri d'activation à l'écran (tous les joueurs)
-    if(v.abil && !prevAbil[i] && inMatch()) showAbilTitle(kitCountry[teamOf(i)]);
+    if(v.abil && !prevAbil[i] && inMatch()) showAbilTitle(kitCountry[teamOf(i)], i);
     prevAbil[i]=v.abil?1:0;
     // roulette : 360° sur l'axe (suit l'état réseau → rien pendant le cooldown)
     const spinExtra = v.spin ? Math.sign(v.spin)*2*Math.PI*(1-Math.abs(v.spin)) : 0;
@@ -2085,7 +2160,16 @@ function renderScene(dt){
     const dashHex = v.dash ? 0x5c4b0b : 0x000000;
     for(const m of mesh.userData.kit){ if(m.material.emissive) m.material.emissive.setHex(dashHex); }
     if(mesh.userData.torso && mesh.userData.torso.material.emissive) mesh.userData.torso.material.emissive.setHex(dashHex);
-    if(mesh.userData.head && mesh.userData.head.material.emissive) mesh.userData.head.material.emissive.setHex(dashHex);
+    // insolation : tête rouge clignotante (sinon teint de peau + reflet dash)
+    const insolV = insolTarget(i);
+    const head=mesh.userData.head;
+    if(head){
+      if(insolV){ const bl=0.5+0.5*Math.sin(blinkPhase*14);
+        head.material.color.setHex(0xff5230);
+        if(head.material.emissive) head.material.emissive.setHex(bl>0.5?0xcc2200:0x330800); }
+      else { head.material.color.setHex(0xe7b48a);
+        if(head.material.emissive) head.material.emissive.setHex(dashHex); }
+    }
     // jambes : -30% d'opacité pour le porteur (mieux voir le ballon) + jaune si tacle chargé à 100%
     const carrier = dist2(v.x,v.z,view.b.x,view.b.z) < (POSSESS+0.25)*(POSSESS+0.25) && view.b.y<1.0;
     const hot=(i===myIndex && !isSpectator && chargingTackle && tackleChargeT>=0.6);
@@ -2099,6 +2183,17 @@ function renderScene(dt){
   // onde de choc (RDA)
   if(shockT>0){ shockT-=dt; const pr=1-shockT/0.6; const s=1+pr*16; shockMesh.scale.set(s,s,s);
     shockMesh.material.opacity=0.6*(1-pr); if(shockT<=0) shockMesh.visible=false; }
+  blinkPhase+=dt;
+  // Grabuge Tropical — Tempête : plan + stries de vent qui balaient la moitié du caster (visible par tous)
+  const storm = maluses.find(m=>m.type===1);
+  if(storm){
+    stormGroup.visible=true;
+    stormGroup.position.z = teamGoalZS(teamOf(storm.caster))*HL/2;   // moitié défendue par le caster
+    for(const ln of stormStreaks){ ln.position.x += 26*dt; if(ln.position.x>HW+2) ln.position.x=-HW-2; }
+  } else stormGroup.visible=false;
+  // Grabuge Tropical — Brouillard : voile écran pour tout le monde sauf l'équipe Suriname qui l'a lancé
+  const fog = maluses.some(m=>m.type===3 && teamOf(myIndex)!==teamOf(m.caster));
+  if(elFog) elFog.classList.toggle('on', fog && !isSpectator && inMatch());
   const dx=view.b.x-lastBall.x, dz=view.b.z-lastBall.z, sp=Math.hypot(dx,dz);
   if(sp>0.001){ const ax=new THREE.Vector3(-dz,0,dx).normalize(); ballMesh.rotateOnWorldAxis(ax, sp/BALL_R); }
   lastBall.x=view.b.x; lastBall.z=view.b.z;
