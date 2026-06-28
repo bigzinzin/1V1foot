@@ -52,10 +52,12 @@
   #abilHud .cd { color:#ffd54a; }
   #abilHud.ready { box-shadow:0 0 0 2px rgba(124,255,178,.5); }
   #stamWrap .lbl { font-size:12px; letter-spacing:2px; opacity:.8; margin-bottom:4px; }
-  #stamBar { height:16px; background:rgba(0,0,0,.5); border-radius:8px; overflow:hidden;
+  #stamBar { height:16px; background:rgba(0,0,0,.5); border-radius:8px; overflow:hidden; position:relative;
     border:1px solid rgba(255,255,255,.2); }
   #stamFill { height:100%; width:100%; background:linear-gradient(90deg,#ffcf3f,#7CFFB2);
     transition:width .05s linear; }
+  #stamMark { position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,.85);
+    display:none; z-index:2; box-shadow:0 0 4px rgba(0,0,0,.6); }
   #powWrap { position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
     width:220px; display:none; }
   #powWrap .lbl{font-size:12px;letter-spacing:2px;text-align:center;margin-bottom:4px;text-shadow:0 1px 2px #000}
@@ -77,6 +79,9 @@
   #fogOverlay { position:absolute; inset:0; pointer-events:none; z-index:11; opacity:0;
     transition:opacity .6s; background:radial-gradient(circle at 50% 55%, rgba(214,219,224,.86) 0%, rgba(206,212,218,.96) 55%, rgba(196,202,208,1) 100%); }
   #fogOverlay.on { opacity:0.96; backdrop-filter:blur(5.3px); -webkit-backdrop-filter:blur(5.3px); }
+  #bigCount { position:absolute; top:34%; left:0; right:0; text-align:center; pointer-events:none;
+    font-size:130px; font-weight:900; color:#ff4d4d; text-shadow:0 6px 0 #6e0000,0 8px 28px #000;
+    display:none; z-index:13; }
   #replayTag { position:absolute; top:18px; left:18px; background:rgba(180,0,0,.85);
     padding:6px 14px; border-radius:8px; font-weight:800; letter-spacing:2px; display:none; z-index:12;}
   #pkHelp { position:absolute; bottom:70px; left:50%; transform:translateX(-50%); text-align:center;
@@ -132,6 +137,13 @@
   .country.opt { width:172px; }
   .country.opt .cdesc { display:block; font-size:10px; opacity:.7; margin-top:4px; line-height:1.32; font-weight:500; }
   .country.opt .cdesc b { color:#ffd54a; }
+  /* cartes compactes : juste pays + nom de capacité (la description s'affiche au survol dans #abilHint) */
+  .country.opt.compact { width:150px; }
+  .country.opt.compact .cdesc { font-size:11px; opacity:.85; }
+  #abilHint { max-width:760px; margin:0 auto 8px; min-height:34px; font-size:13px; line-height:1.4;
+    background:rgba(0,0,0,.32); border:1px solid rgba(255,255,255,.1); border-radius:9px; padding:8px 12px;
+    opacity:.7; transition:opacity .12s; }
+  #abilHint.show { opacity:1; border-color:rgba(255,213,74,.4); }
   .votepill { display:inline-block; font-size:10px; font-weight:800; letter-spacing:1px; padding:2px 6px;
     border-radius:6px; margin:3px 2px 0; background:#1b2430; }
   .votepill.me { background:#3a6b3a; } .votepill.opp { background:#6b3a3a; }
@@ -203,7 +215,10 @@
     <div class="lobsec">CAPACITÉS SPÉCIALES</div>
     <div class="grid" id="abilGrid"></div>
     <div class="lobsec">CHOISIS TON PAYS</div>
+    <div id="abilHint">Survole un pays pour voir sa capacité.</div>
     <div class="grid" id="countryGrid"></div>
+    <div class="lobsec" id="aiCountrySec" style="display:none">ÉQUIPE DE L'IA (adversaire)</div>
+    <div class="grid" id="aiCountryGrid" style="display:none"></div>
     <div class="lobsec">VOTE POUR LA MAP</div>
     <div class="grid" id="mapGrid"></div>
     <div class="status" id="lobbyStatus">Choisis ton pays et vote une map.</div>
@@ -244,13 +259,14 @@
     <span id="scoreR">0</span>
     <span class="nameR" id="nameR">ADV</span>
   </div>
-  <div id="stamWrap"><div class="lbl">ENDURANCE</div><div id="stamBar"><div id="stamFill"></div></div></div>
+  <div id="stamWrap"><div class="lbl">ENDURANCE</div><div id="stamBar"><div id="stamFill"></div><div id="stamMark"></div></div></div>
   <div id="abilHud"></div>
   <div id="powWrap"><div class="lbl">PUISSANCE</div><div id="powBar"><div id="powFill"></div></div></div>
   <div id="crosshair"></div>
   <div id="banner"></div>
   <div id="subBanner"></div>
   <div id="abilTitle"></div>
+  <div id="bigCount"></div>
   <div id="fogOverlay"></div>
   <div id="replayTag">● RALENTI</div>
   <div id="pkHelp"></div>
@@ -315,27 +331,31 @@ const TEAM_COL = [0x2f7bdc, 0xdc4b3a];     // P0 bleu, P1 rouge (défaut avant c
 // Pays : couleur maillot + cage + couleur texte HUD
 const COUNTRIES = [
   { name:'Empire Chinois', short:'CHINE',     flag:'🇨🇳', col:0xcc2222, txt:'#ff6a5e' },  // rouge
-  { name:'Taiwan',         short:'TAIWAN',    flag:'🇹🇼', col:0x2f6fdc, txt:'#5db4ff' },  // bleu
+  { name:'Taiwan',         short:'TAIWAN',    flag:'🇹🇼', col:0x4aa6ef, txt:'#9fd6ff' },  // bleu clair
   { name:'Bangladesh',     short:'BANGLADESH',flag:'🇧🇩', col:0x16181d, txt:'#b8c0cc' },  // noir
   { name:'Gibraltar',      short:'GIBRALTAR', flag:'🇬🇮', col:0xf2f2f2, txt:'#ffffff' },  // blanc
   { name:'Empire Ottoman', short:'OTTOMAN',   flag:'🇹🇷', col:0x1f8a4c, txt:'#54d98a' },  // vert
   { name:'Allemagne de l’Est', short:'RDA',   flag:'🇩🇪', col:0x6cc4e6, txt:'#9fe0f5' },  // bleu clair
   { name:'Technodroïdes',  short:'TECHNO',     flag:'🤖', col:0x9b4dd6, txt:'#c89bf0' },  // violet
   { name:'Suriname',       short:'SURINAME',   flag:'🇸🇷', col:0xe8731f, txt:'#ff9d3c' },  // orange
+  { name:'Yougoslavie',    short:'YOUGO',      flag:'🇷🇸', col:0xc62828, txt:'#ff7a7a' },  // rouge/blanc + étoile rouge dos
+  { name:'Japon',          short:'JAPON',      flag:'🇯🇵', col:0x1b3b8f, txt:'#86a9ff' },  // bleu foncé/blanc
 ];
 // Coups spéciaux (touche E) — un par pays, indexé comme COUNTRIES
 const ABILITIES = [
-  { name:'Crédit Social',         icon:'📈', cd:20, dur:10, desc:'Endurance restaurée à fond, max +35% et régén +50% pendant 10s.' },        // Chine
-  { name:'High Kick',             icon:'🦵', cd:20, dur:0, desc:'Dash + saut + genou : immobilise l’adversaire 1,7s et le recule de 3m.' },  // Taiwan (cd 30→20)
+  { name:'Crédit Social',         icon:'📈', cd:20, dur:10, desc:'Endurance restaurée à fond, max +50% et régén +50% pendant 10s.' },        // Chine
+  { name:'High Kick',             icon:'🦵', cd:20, dur:0, desc:'Dash + saut + genou : immobilise l’adversaire 1,5s et le recule de 3m.' },  // Taiwan (cd 30→20)
   { name:'Corruption',            icon:'💵', cd:45, dur:5, desc:'Immunité aux penaltys 5s : tacler par derrière n’est plus sanctionné.' },  // Bangladesh
   { name:'Détroit',               icon:'🎯', cd:0,  dur:0, uses:2, desc:'Passe droit : ouvre toutes les cases de la zone de tir (2 usages, sans cooldown).' },  // Gibraltar
   { name:'Super Jump',            icon:'🦘', cd:60, dur:0, desc:'Énorme saut + dash de 15m vers l’avant (ballon collé).' },  // Ottoman (cd 20→60)
-  { name:'Ich Bin Ein Berliner',  icon:'💥', cd:50, dur:0, desc:'Onde de choc blanche qui propulse les adversaires de 10m.' },  // RDA
+  { name:'Ich Bin Ein Berliner',  icon:'💥', cd:50, dur:0, desc:'Onde de choc blanche qui propulse les adversaires de 8m.' },  // RDA
   { name:'Dopage',                icon:'⚡', cd:35, dur:6, desc:'+28% vitesse, +10% puissance de tir, +20% portée de tacle chargé pendant 6s.' },  // Techno
   { name:'Grabuge Tropical',      icon:'🌪️', cd:45, dur:10, desc:'Inflige un malus aléatoire à l’adversaire pendant 10s : Tempête, Insolation ou Brouillard.' },  // Suriname
+  { name:'Yougosphère',           icon:'🛡️', cd:90, dur:15, desc:'Dôme de 15m au centre (15s) : bloque tous les ballons et impose le Silence (aucune capacité) aux adversaires à l’intérieur.' },  // Yougoslavie
+  { name:'Kamikaze',              icon:'💣', cd:35, dur:0, desc:'Compte à rebours de 5s puis explosion (rayon 8m) : tue le lanceur (réapparition 3s) et tout joueur au contact (allié ou adverse), renvoyés dans leur moitié.' },  // Japon
 ];
 // Cri d'activation affiché à l'écran de tous les joueurs (indexé comme COUNTRIES)
-const ABIL_TITLES = ['SOCIAL CREDIT !','高踢 !','CORRUPTED !','OPEN GATE !','SUPA JUMP !','GEHT MIR AUS DEM WEG!','SUBSTANCE DEPLOYMENT : CONFIRMED','GRABUGE TROPICAL'];
+const ABIL_TITLES = ['SOCIAL CREDIT !','高踢 !','CORRUPTED !','OPEN GATE !','SUPA JUMP !','GEHT MIR AUS DEM WEG!','SUBSTANCE DEPLOYMENT : CONFIRMED','GRABUGE TROPICAL','YOUGOSPHÈRE','KAMIKAZE'];
 const MALUS_TITLES = ['','TEMPÊTE','INSOLATION','BROUILLARD'];   // index = malus.type (1/2/3)
 // Maps sélectionnables
 const MAPS = [
@@ -712,8 +732,12 @@ function makePlayer(col){
   shL.position.set(-0.55,1.55,0); shR.position.set(0.55,1.55,0);
   armL.position.set(0,-0.4,0); armR.position.set(0,-0.4,0);
   shL.add(armL); shR.add(armR);
+  // étoile rouge dans le dos (affichée pour la Yougoslavie)
+  const backStar=new THREE.Mesh(new THREE.ShapeGeometry(starShape()), new THREE.MeshBasicMaterial({color:0xd40000, side:THREE.DoubleSide}));
+  backStar.scale.set(0.26,0.26,0.26); backStar.position.set(0,1.28,-0.27); backStar.rotation.y=Math.PI; backStar.visible=false;
+  g.add(backStar);
   g.add(torso,head,hipL,hipR,shL,shR);
-  g.userData={hipL,hipR,shL,shR,torso,head,legL,legR,phase:0,kit:[torso,armL,armR]};
+  g.userData={hipL,hipR,shL,shR,torso,head,legL,legR,backStar,phase:0,kit:[torso,armL,armR]};
   scene.add(g);
   return g;
 }
@@ -751,6 +775,31 @@ for(let s=0;s<14;s++){ const ln=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.04,0.
   ln.position.set(-HW + Math.random()*FIELD_W, 0.4+Math.random()*1.6, -HL/2 + Math.random()*HL);
   stormGroup.add(ln); stormStreaks.push(ln); }
 scene.add(stormGroup);
+
+// ===== Yougosphère (Yougoslavie) : dôme central =====
+const DOME_R=7.5;   // rayon 7.5m → diamètre 15m
+let dome={ active:false, t:0, caster:-1 };
+function setDome(caster){ dome.active=true; dome.t=15; dome.caster=caster;
+  if(isHost) netFx('dome', {c:caster}, 15000); }
+function domeContains(x,z){ return dome.active && (x*x+z*z) < DOME_R*DOME_R; }   // dôme centré au rond central (0,0)
+function isSilenced(i){ return dome.active && domeContains(P[i].x,P[i].z) && teamOf(i)!==teamOf(dome.caster); }
+// visuel dôme : demi-sphère translucide + étoile rouge au sol au centre
+const domeGroup=new THREE.Group(); domeGroup.visible=false;
+const domeMesh=new THREE.Mesh(new THREE.SphereGeometry(DOME_R,24,16,0,Math.PI*2,0,Math.PI/2),
+  new THREE.MeshBasicMaterial({color:0xff5a5a, transparent:true, opacity:0.18, side:THREE.DoubleSide, depthWrite:false}));
+domeGroup.add(domeMesh);
+function starShape(){ const s=new THREE.Shape(); const o=0.9,inn=0.38;
+  for(let k=0;k<10;k++){ const r=k%2?inn:o, a=Math.PI/2 + k*Math.PI/5; const X=Math.cos(a)*r, Y=Math.sin(a)*r; k?s.lineTo(X,Y):s.moveTo(X,Y); } s.closePath(); return s; }
+const domeStar=new THREE.Mesh(new THREE.ShapeGeometry(starShape()),
+  new THREE.MeshBasicMaterial({color:0xd40000, side:THREE.DoubleSide}));
+domeStar.rotation.x=-Math.PI/2; domeStar.position.y=0.22; domeStar.scale.set(2.2,2.2,2.2); domeStar.renderOrder=3; domeStar.material.depthTest=false; domeGroup.add(domeStar);
+scene.add(domeGroup);
+
+// ===== Kamikaze (Japon) : explosion =====
+const boomMesh=new THREE.Mesh(new THREE.SphereGeometry(1,18,12),
+  new THREE.MeshBasicMaterial({color:0xffa42e, transparent:true, opacity:0, depthWrite:false}));
+boomMesh.visible=false; scene.add(boomMesh); let boomT=0;
+function boomAt(x,z){ boomMesh.position.set(x,1,z); boomT=0.5; boomMesh.visible=true; beep(90,0.35,0.3,'sawtooth'); }
 
 // ballon
 const ballMesh=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,18,14), lam(0xffffff));
@@ -806,6 +855,7 @@ let myMode=0, oppMode=0;            // 0 = 1v1, 1 = 2v2 (préférence lobby)
 let myAbil=1;                       // 1 = avec capacités, 0 = mode standard (lobby)
 let matchAbilities=true;            // capacités actives pour le match en cours
 let chosenMap=0, kitCountry=[0,1];  // kitCountry indexé par ÉQUIPE
+let aiCountry=null;                 // solo : pays choisi pour l'IA (null = aléatoire)
 
 // ---- Mode & équipes ----
 let mode2v2=false;                  // false = 1v1, true = 2v2
@@ -818,7 +868,7 @@ function myTeam(){ return teamOf(myIndex); }
 function newPlayer(idx){
   return { idx, team:teamOf(idx), x:0,z:0,y:0, vx:0,vz:0,vy:0, yaw:0, onGround:true,
     stamina:STAM_MAX, tackleT:0, tackleCd:0, shotCd:0, stunT:0, anim:0, speed:0, charge:0, rouletteT:0, rouletteDir:1, rouletteCd:0, tackleHit:false,
-    abilCd:0, abilT:0, abilUsed:0, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0 };
+    abilCd:0, abilT:0, abilUsed:0, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0, fuseT:0, deadT:0 };
 }
 let P=[ newPlayer(0), newPlayer(1) ];
 function setupPlayers(){
@@ -926,7 +976,8 @@ function locomotion(p, inp, dt){
     const carry = (ball.owner===p.idx) ? CARRY_MUL : 1;   // plus lent avec le ballon
     const dope = p.dope ? 1.28 : 1;                       // Dopage (Techno) : +28% vitesse
     const insol = insolTarget(p.idx) ? 0.5 : 1;   // Insolation : -50% vitesse
-    const sp = (canSprint?SPRINT:WALK)*carry*dope*insol;
+    const kami = p.fuseT>0 ? 1.1 : 1;             // Kamikaze : +10% vitesse pendant le compte à rebours
+    const sp = (canSprint?SPRINT:WALK)*carry*dope*insol*kami;
     const dvx=mvx*sp, dvz=mvz*sp;
     p.vx += (dvx-p.vx)*Math.min(1,14*dt);
     p.vz += (dvz-p.vz)*Math.min(1,14*dt);
@@ -966,7 +1017,7 @@ function ballControl(dt){
   // ---- 1) Déterminer le porteur (adhérence + duel au corps) ----
   let near=-1, nd=Infinity;
   for(let i=0;i<NP;i++){
-    if(P[i].shotCd>0 || P[i].stunT>0 || P[i].tackleT>0) continue;
+    if(P[i].shotCd>0 || P[i].stunT>0 || P[i].tackleT>0 || P[i].deadT>0) continue;
     if(protectBall>0 && teamOf(i)!==restartTeam) continue;   // protection : seul le bénéficiaire peut prendre la balle
     const d=dist2(P[i].x,P[i].z, ball.x,ball.z);
     if(d<nd){ nd=d; near=i; }
@@ -1106,6 +1157,17 @@ function ballControl(dt){
 function ballPhysics(dt){
   ball.vy-=18*dt;
   ball.x+=ball.vx*dt; ball.y+=ball.vy*dt; ball.z+=ball.vz*dt;
+  // Yougosphère : le dôme bloque le ballon LIBRE (tir/lob/poussée) qui traverse sa coque — un porteur peut y entrer
+  if(dome.active && ball.owner==null && ball.y<DOME_R){
+    const R=DOME_R, d2=ball.x*ball.x+ball.z*ball.z;
+    const pd2=(ball.x-ball.vx*dt)*(ball.x-ball.vx*dt)+(ball.z-ball.vz*dt)*(ball.z-ball.vz*dt);
+    if((pd2>=R*R) !== (d2>=R*R)){                                  // le ballon a traversé la paroi (intérieur↔extérieur)
+      const d=Math.sqrt(d2)||0.001, nx=ball.x/d, nz=ball.z/d;
+      const vr=ball.vx*nx+ball.vz*nz; ball.vx-=2*vr*nx; ball.vz-=2*vr*nz;   // réflexion
+      const keep = (pd2>=R*R) ? (R+BALL_R) : (R-BALL_R);           // le maintenir de son côté d'origine
+      ball.x=nx*keep; ball.z=nz*keep; ball.vx*=0.8; ball.vz*=0.8;
+    }
+  }
   if(ball.y<BALL_R){ ball.y=BALL_R; if(ball.vy<0) ball.vy=-ball.vy*0.5; if(Math.abs(ball.vy)<0.8)ball.vy=0;
     ball.vx*=(1-1.4*dt); ball.vz*=(1-1.4*dt);
   } else { ball.vx*=(1-0.25*dt); ball.vz*=(1-0.25*dt); }
@@ -1295,8 +1357,8 @@ function kickoff(cd){
     P[1].x=0; P[1].z= adv; P[1].yaw=Math.PI;
   }
   for(const p of P){ p.y=0; p.vx=p.vz=p.vy=0; p.tackleT=0; p.tackleCd=0; p.shotCd=0; p.stunT=0; p.stamina=STAM_MAX; p.anim=0; p.charge=0;
-    p.detroit=false; p.knockT=0; }
-  maluses=[];   // un engagement annule tout malus en cours
+    p.detroit=false; p.knockT=0; p.fuseT=0; p.deadT=0; }
+  maluses=[]; dome.active=false; dome.caster=-1;   // un engagement annule malus / dôme en cours
   // ballon au sol au centre (engagement classique, course au ballon)
   ball.x=0; ball.z=0; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.lastTouch=-1; ball.owner=null; ball.walled=false;
   protectBall=0; restartTeam=-1;
@@ -1364,28 +1426,32 @@ function activateAbility(i){
   const maxUses = ab.uses || (ab.once ? 1 : Infinity);
   if((p.abilUsed||0) >= maxUses && !isTraining) return;
   if(p.stunT>0) return;
+  if(isSilenced(i)) return;                       // Yougosphère : Silence (adversaire dans le dôme)
+  if(p.deadT>0) return;                           // mort (Kamikaze) : pas de capacité
   p.abilCd = isTraining?0:ab.cd; p.abilT=ab.dur; p.abilUsed=(p.abilUsed||0)+1; p.abilFlash=0.7;
   const f=fwd(p.yaw);
   switch(country){
-    case 0:  p.stamMax=Math.round(STAM_MAX*1.35); p.regenMul=1.5; p.stamina=p.stamMax; break;   // Chine : endurance max +35%, récup +50%, restaurée intégralement
-    case 1:{ // Taiwan : High Kick — dash + saut + genou (recule l'adversaire de 3m, stun 2.8s)
+    case 0:  p.stamMax=Math.round(STAM_MAX*1.5); p.regenMul=1.5; p.stamina=p.stamMax; break;   // Chine : endurance max +50%, récup +50%, restaurée intégralement
+    case 1:{ // Taiwan : High Kick — dash + saut + genou (recule l'adversaire de 3m, stun 1.5s)
       p.vy=JUMP_V*0.9; p.onGround=false; p.knockT=0.42; p.knockVx=f.x*22; p.knockVz=f.z*22;  // dash +3m
       const o=nearestOpponent(i);
-      if(o>=0 && dist2(p.x,p.z,P[o].x,P[o].z)<6*6){ P[o].stunT=Math.max(P[o].stunT,1.7);
+      if(o>=0 && dist2(p.x,p.z,P[o].x,P[o].z)<6*6){ P[o].stunT=Math.max(P[o].stunT,1.5);
         P[o].knockT=0.3; P[o].knockVx=f.x*10; P[o].knockVz=f.z*10; }   // 3m vers l'arrière
       break; }
     case 2:  p.noPenT=5; break;                                            // Bangladesh : Corruption (immunité 5s)
     case 3:  p.detroit=true; break;                                        // Gibraltar : Détroit (toute l'action)
     case 4:  p.vy=JUMP_V*1.9; p.onGround=false; p.knockT=0.5; p.knockVx=f.x*30; p.knockVz=f.z*30; break;  // Ottoman : Super Jump (dash +15m, ballon collé)
-    case 5:{ // RDA : onde de choc — propulse les adversaires de 10m vers l'arrière
+    case 5:{ // RDA : onde de choc — propulse les adversaires de 8m vers l'arrière
       for(let k=0;k<NP;k++){ if(teamOf(k)===teamOf(i)) continue;
         const dx=P[k].x-p.x, dz=P[k].z-p.z, d=Math.hypot(dx,dz)||1;
-        if(d<11){ P[k].knockT=0.5; P[k].knockVx=dx/d*20; P[k].knockVz=dz/d*20; P[k].stunT=Math.max(P[k].stunT,0.7); } }  // 20*0.5=10m
+        if(d<11){ P[k].knockT=0.5; P[k].knockVx=dx/d*16; P[k].knockVz=dz/d*16; P[k].stunT=Math.max(P[k].stunT,0.7); } }  // 16*0.5=8m
       shockwaveAt(p.x,p.z); break; }
     case 6:  p.dope=true; break;                                           // Techno : Dopage
     case 7:{ // Suriname : Grabuge Tropical — malus aléatoire à l'adversaire
       const type=1+Math.floor(Math.random()*3);   // 1 Tempête / 2 Insolation / 3 Brouillard (équiprobables)
       setMalus(type, i, nearestOpponent(i)); break; }
+    case 8:  setDome(i); break;                                            // Yougoslavie : Yougosphère (dôme central)
+    case 9:  p.fuseT=5; break;                                             // Japon : Kamikaze (explosion dans 5s)
   }
   beep(680,0.16,0.2,'sawtooth'); beep(420,0.18,0.14);
   if(isSolo || i===myIndex) slowmo=Math.max(slowmo,1.0);   // coup spécial : léger ralenti 1.0s (+0.2s) + désaturation 50%
@@ -1399,13 +1465,27 @@ function stepMalus(dt){   // effets de simulation (hôte/solo) — Tempête (Ins
   const storm = maluses.find(m=>m.type===1);   // une seule poussée même si 2 tempêtes (même équipe)
   if(storm){ const ct=teamOf(storm.caster), cz=teamGoalZS(ct);
     for(let k=0;k<NP;k++){ if(teamOf(k)===ct) continue; if(P[k].z*cz>0) P[k].x += STORM_PUSH*dt; }  // adversaires dans la moitié du caster → poussés vers +x
+    if(ball.owner==null && ball.z*cz>0){ ball.x += STORM_PUSH*dt; }   // le ballon libre est aussi balayé par la tempête
   }
 }
-function tickMalus(dt){ if(!maluses.length) return; for(const m of maluses) m.t-=dt; maluses = maluses.filter(m=>m.t>0); }
+function tickMalus(dt){
+  if(maluses.length){ for(const m of maluses) m.t-=dt; maluses = maluses.filter(m=>m.t>0); }
+  if(dome.active){ dome.t-=dt; if(dome.t<=0){ dome.active=false; dome.caster=-1; } }
+}
+function killPlayer(k, deadDur){ P[k].deadT=deadDur; P[k].fuseT=0; if(ball.owner===k) ball.owner=null; }
+function respawnPlayer(k){ const tm=teamOf(k); P[k].x=0; P[k].z=teamGoalZS(tm)*HL/2; P[k].y=0;
+  P[k].vx=P[k].vz=P[k].vy=0; P[k].knockT=0; P[k].stunT=0; P[k].onGround=true; }
+function explodeKamikaze(i){   // Japon : explosion (rayon 4m), tue le lanceur + tout contact, renvoie chacun dans sa moitié
+  const p=P[i]; boomAt(p.x,p.z);
+  for(let k=0;k<NP;k++){ if(k===i) continue; if(dist2(p.x,p.z,P[k].x,P[k].z) < 4*4) killPlayer(k,1.5); }
+  killPlayer(i,3);   // réapparition 3s pour le lanceur
+}
 function runActors(dt){
   for(let i=0;i<NP;i++){
     const p=P[i], inp=inputFor(i)||NULLINPUT;
     p.charge = inp.charge||0;
+    if(p.deadT>0){ p.deadT-=dt; if(p.deadT<=0){ respawnPlayer(i); } else { p.vx=p.vz=0; p.anim=0; continue; } }  // mort (Kamikaze)
+    if(p.fuseT>0){ p.fuseT-=dt; if(p.fuseT<=0){ explodeKamikaze(i); continue; } }                                // compte à rebours Kamikaze
     if(p.tackleCd>0)p.tackleCd-=dt; if(p.shotCd>0)p.shotCd-=dt;
     if(p.tackleT>0){ p.tackleT-=dt;
       if(p.tackleT<=0){ p.anim=0;
@@ -1669,6 +1749,8 @@ function updateAI(dt){
       else if(cc===5){ let n=0; for(let k=0;k<NP;k++) if(teamOf(k)!==t && dist2(P[k].x,P[k].z,me.x,me.z)<6.5*6.5) n++; cast = n>0 && !haveBall; } // Berliner
       else if(cc===6) cast = haveBall && Math.abs(goalZ-me.z)<28;                    // Dopage en attaque
       else if(cc===7) cast = oppHasBall;                                             // Grabuge Tropical : débuff le porteur adverse
+      else if(cc===8) cast = oppHasBall && Math.hypot(ball.x,ball.z)<13;             // Yougosphère : quand le jeu est proche du centre
+      else if(cc===9) cast = oppHasBall && dOppMe<3.0;                               // Kamikaze : un adversaire porteur très proche
       if(cast) inp.act.special=true;
     }
     inp.yaw=me.yaw;
@@ -1989,6 +2071,7 @@ function onData(msg){
     else if(msg.k==='sub') showSub(msg.v, msg.ms||1400);
     else if(msg.k==='replay') elReplay.style.display=msg.v?'block':'none';
     else if(msg.k==='malus' && msg.v){ maluses = maluses.filter(m=>m.caster!==msg.v.c); maluses.push({type:msg.v.ty, t:(msg.ms||10000)/1000, caster:msg.v.c, victim:msg.v.v}); }
+    else if(msg.k==='dome' && msg.v){ dome.active=true; dome.t=(msg.ms||15000)/1000; dome.caster=msg.v.c; }
     return;
   }
   if(msg.t==='chat'){ showChat(msg.m, false); return; }
@@ -2143,6 +2226,7 @@ function renderScene(dt){
   for(let i=0;i<playerMesh.length;i++){
     const mesh=playerMesh[i], aura=auraMesh[i];
     if(i>=NP){ mesh.visible=false; continue; }   // en entraînement, l'adversaire = mannequin (visible)
+    if((isHost||isSolo) && P[i] && P[i].deadT>0){ mesh.visible=false; prevAbil[i]=0; continue; }   // mort (Kamikaze) : masqué
     mesh.visible=true;
     const v=view.p[i];
     // front montant de la compétence (v.abil 0→1) → cri d'activation à l'écran (tous les joueurs)
@@ -2156,19 +2240,24 @@ function renderScene(dt){
     else if(ch>0.4){ aura.visible=true; aura.material.opacity=0.12+ch*0.5;
       const s=1+ch*0.25; aura.scale.set(s,s,s); aura.material.color.setHex(ch>0.75?0xffe14a:0xffcf3f); }
     else aura.visible=false;
-    // dash : pas d'aura — surbrillance jaune appliquée directement sur le skin (émissif, opacité -40%)
-    const dashHex = v.dash ? 0x5c4b0b : 0x000000;
-    for(const m of mesh.userData.kit){ if(m.material.emissive) m.material.emissive.setHex(dashHex); }
-    if(mesh.userData.torso && mesh.userData.torso.material.emissive) mesh.userData.torso.material.emissive.setHex(dashHex);
-    // insolation : tête rouge clignotante (sinon teint de peau + reflet dash)
+    // Kamikaze : clignotement rouge progressif (lent au début, rapide à la fin du compte à rebours)
+    const fuseT = (isHost||isSolo) && P[i] ? (P[i].fuseT||0) : 0;
+    let bodyEmis = v.dash ? 0x5c4b0b : 0x000000;   // dash : surbrillance jaune (émissif, -40%)
+    let kamiBlink = false;
+    if(fuseT>0){ const rate=4+(5-fuseT)*4.5; kamiBlink = (0.5+0.5*Math.sin(blinkPhase*rate))>0.5;
+      bodyEmis = kamiBlink ? 0xd01414 : 0x200000; }
+    for(const m of mesh.userData.kit){ if(m.material.emissive) m.material.emissive.setHex(bodyEmis); }
+    if(mesh.userData.torso && mesh.userData.torso.material.emissive) mesh.userData.torso.material.emissive.setHex(bodyEmis);
+    // tête : Kamikaze (priorité) puis Insolation, sinon teint de peau
     const insolV = insolTarget(i);
     const head=mesh.userData.head;
     if(head){
-      if(insolV){ const bl=0.5+0.5*Math.sin(blinkPhase*14);
+      if(fuseT>0){ head.material.color.setHex(kamiBlink?0xff3030:0xe7b48a); if(head.material.emissive) head.material.emissive.setHex(bodyEmis); }
+      else if(insolV){ const bl=0.5+0.5*Math.sin(blinkPhase*14);
         head.material.color.setHex(0xff5230);
         if(head.material.emissive) head.material.emissive.setHex(bl>0.5?0xcc2200:0x330800); }
       else { head.material.color.setHex(0xe7b48a);
-        if(head.material.emissive) head.material.emissive.setHex(dashHex); }
+        if(head.material.emissive) head.material.emissive.setHex(bodyEmis); }
     }
     // jambes : -30% d'opacité pour le porteur (mieux voir le ballon) + jaune si tacle chargé à 100%
     const carrier = dist2(v.x,v.z,view.b.x,view.b.z) < (POSSESS+0.25)*(POSSESS+0.25) && view.b.y<1.0;
@@ -2194,6 +2283,12 @@ function renderScene(dt){
   // Grabuge Tropical — Brouillard : voile écran pour tout le monde sauf l'équipe Suriname qui l'a lancé
   const fog = maluses.some(m=>m.type===3 && teamOf(myIndex)!==teamOf(m.caster));
   if(elFog) elFog.classList.toggle('on', fog && !isSpectator && inMatch());
+  // Yougosphère : dôme central (étoile rouge qui pulse légèrement)
+  domeGroup.visible = dome.active;
+  if(dome.active){ domeMesh.material.opacity = 0.14 + 0.06*(0.5+0.5*Math.sin(blinkPhase*3)); }
+  // Kamikaze : explosion (rayon 4m → diamètre 8m)
+  if(boomT>0){ boomT-=dt; const pr=1-boomT/0.5; const s=0.5+pr*4; boomMesh.scale.set(s,s,s);
+    boomMesh.material.opacity=0.85*(1-pr); if(boomT<=0) boomMesh.visible=false; }
   const dx=view.b.x-lastBall.x, dz=view.b.z-lastBall.z, sp=Math.hypot(dx,dz);
   if(sp>0.001){ const ax=new THREE.Vector3(-dz,0,dx).normalize(); ballMesh.rotateOnWorldAxis(ax, sp/BALL_R); }
   lastBall.x=view.b.x; lastBall.z=view.b.z;
@@ -2272,7 +2367,17 @@ function updateHUD(){
     return;
   }
   const st=(isHost||isSolo)? (P[myIndex]?P[myIndex].stamina:STAM_MAX) : (view.stam[myIndex]||0);
-  elStam.style.width=clamp(st/STAM_MAX*100,0,100)+'%';
+  // endurance : la barre s'allonge quand le max augmente (Crédit Social) ; un repère marque la portion ajoutée
+  const curMax=(isHost||isSolo)&&P[myIndex] ? (P[myIndex].stamMax||STAM_MAX) : STAM_MAX;
+  const stamWrap=document.getElementById('stamWrap'); if(stamWrap) stamWrap.style.width=(240*curMax/STAM_MAX)+'px';
+  elStam.style.width=clamp(st/curMax*100,0,100)+'%';
+  const sm=document.getElementById('stamMark');
+  if(sm){ if(curMax>STAM_MAX+0.5){ sm.style.display='block'; sm.style.left=(STAM_MAX/curMax*100)+'%'; } else sm.style.display='none'; }
+  // Kamikaze : compte à rebours (5s avant explosion) puis réapparition (3s) pour le joueur local
+  const bc=document.getElementById('bigCount');
+  if(bc){ let n=0; const me=(isHost||isSolo)?P[myIndex]:null;
+    if(me){ if(me.fuseT>0) n=Math.ceil(me.fuseT); else if(me.deadT>0) n=Math.ceil(me.deadT); }
+    if(n>0){ bc.style.display='block'; bc.textContent=n; } else bc.style.display='none'; }
   crosshair.style.display=(document.pointerLockElement===renderer.domElement && gmode!=='replay')?'block':'none';
   // coup spécial : logo + état (cooldown / prêt / actif) — masqué en mode standard
   if(abilHud){ const ab=ABILITIES[kitCountry[mt]];
@@ -2282,9 +2387,12 @@ function updateHUD(){
       const maxU = ab.uses || (ab.once?1:Infinity);
       const used = pp && !isTraining && (pp.abilUsed||0) >= maxU;
       const left = ab.uses && pp ? Math.max(0, ab.uses-(pp.abilUsed||0)) : 0;
-      const st2 = active?'ACTIF' : (used?'utilisé' : (ab.uses?('PRÊT (E) · '+left+' rest.'):(cd>0?Math.ceil(cd)+'s':'PRÊT (E)')));
+      // Yougosphère : Silence → "REFUSÉ" en rouge si le joueur local est dans le dôme adverse
+      const lp = view.p[myIndex]; const silenced = dome.active && lp && (lp.x*lp.x+lp.z*lp.z)<DOME_R*DOME_R && teamOf(myIndex)!==teamOf(dome.caster);
+      const st2 = silenced ? '<span style="color:#ff4d4d">REFUSÉ</span>'
+        : active?'ACTIF' : (used?'utilisé' : (ab.uses?('PRÊT (E) · '+left+' rest.'):(cd>0?Math.ceil(cd)+'s':'PRÊT (E)')));
       abilHud.innerHTML='<span class="ic">'+ab.icon+'</span>'+ab.name+' · <span class="cd">'+st2+'</span>';
-      abilHud.classList.toggle('ready', cd<=0 && !used && !active);
+      abilHud.classList.toggle('ready', cd<=0 && !used && !active && !silenced);
     } else abilHud.style.display='none';
   }
 }
@@ -2351,11 +2459,12 @@ function buildLobbyUI(){
   });
   countryGrid.innerHTML='';
   COUNTRIES.forEach((c,i)=>{
-    const el=document.createElement('div'); el.className='opt country'; el.dataset.i=i;
+    const el=document.createElement('div'); el.className='opt country compact'; el.dataset.i=i;
     const ab=ABILITIES[i];
     el.innerHTML='<span class="sw" style="background:#'+c.col.toString(16).padStart(6,'0')+'"></span>'+c.flag+' '+c.name+
-      '<span class="cdesc">'+ab.icon+' <b>'+ab.name+'</b> — '+ab.desc+'</span><span class="meta"></span>';
+      '<span class="cdesc">'+ab.icon+' <b>'+ab.name+'</b></span><span class="meta"></span>';
     el.onclick=()=>selectCountry(i);
+    el.onmouseenter=()=>showAbilHint(i); el.onmouseleave=()=>showAbilHint(-1);
     countryGrid.appendChild(el);
   });
   mapGrid.innerHTML='';
@@ -2365,7 +2474,18 @@ function buildLobbyUI(){
     el.onclick=()=>selectMap(i);
     mapGrid.appendChild(el);
   });
+  // grille du pays de l'IA (solo uniquement) — puces compactes
+  const aiGrid=document.getElementById('aiCountryGrid'); aiGrid.innerHTML='';
+  const mkAi=(label,idx)=>{ const el=document.createElement('div'); el.className='opt'; el.dataset.i=idx; el.style.minWidth='130px';
+    el.innerHTML='<span class="name">'+label+'</span><span class="meta"></span>';
+    el.onclick=()=>selectAiCountry(idx===-1?null:idx); aiGrid.appendChild(el); };
+  mkAi('🎲 Aléatoire', -1);
+  COUNTRIES.forEach((c,i)=> mkAi(c.flag+' '+c.short, i));
 }
+function selectAiCountry(i){ if(i!=null && i===myCountry) return; aiCountry=i; myReady=false; renderLobby(); }
+function showAbilHint(i){ const h=document.getElementById('abilHint'); if(!h) return;
+  if(i<0||i==null){ h.innerHTML='Survole un pays pour voir sa capacité.'; h.classList.remove('show'); return; }
+  const ab=ABILITIES[i]; h.innerHTML='<b style="color:'+COUNTRIES[i].txt+'">'+ab.icon+' '+ab.name+'</b> — '+ab.desc; h.classList.add('show'); }
 function renderLobby(){
   const clientLocked = !isSolo && !isHost;   // le client ne choisit pas le mode
   [...modeGrid.children].forEach(el=>{ const i=+el.dataset.i;
@@ -2391,6 +2511,15 @@ function renderLobby(){
     if(myVote===i) meta.innerHTML+='<span class="votepill me">VOTRE VOTE</span>';
     if(!isSolo && oppVote===i) meta.innerHTML+='<span class="votepill opp">ADVERSAIRE</span>';
   });
+  // pays de l'IA (solo, hors entraînement)
+  const showAi = isSolo && !isTraining;
+  document.getElementById('aiCountrySec').style.display = showAi?'block':'none';
+  const aiGrid=document.getElementById('aiCountryGrid'); aiGrid.style.display = showAi?'flex':'none';
+  if(showAi){ [...aiGrid.children].forEach(el=>{ const i=+el.dataset.i;
+    const sel = (i===-1) ? (aiCountry==null) : (aiCountry===i);
+    el.classList.toggle('sel', sel);
+    el.classList.toggle('taken', i===myCountry && i!==-1);   // ne peut pas être le même que le joueur
+  }); }
   const canReady = myCountry!=null && myVote!=null && (isSolo || oppCountry==null || myCountry!==oppCountry);
   btnReady.disabled=!canReady;
   btnReady.classList.toggle('ready', myReady);
@@ -2415,7 +2544,9 @@ function clickReady(){
   if(btnReady.disabled) return;
   myReady=!myReady;
   if(isSolo && myReady){
-    let c; do{ c=(Math.random()*COUNTRIES.length)|0; }while(c===myCountry);
+    let c;
+    if(aiCountry!=null && aiCountry!==myCountry){ c=aiCountry; }              // équipe IA choisie
+    else { do{ c=(Math.random()*COUNTRIES.length)|0; }while(c===myCountry); } // sinon aléatoire
     oppCountry=c; oppVote=myVote; oppReady=true;   // solo/training : la map jouée = celle votée
   }
   sendLobby(); renderLobby();
@@ -2425,7 +2556,11 @@ function sendLobby(){ if(conn&&connected){ try{ conn.send({t:'lobby', c:myCountr
 function resolveVote(a,b){ return a===b ? a : (Math.random()<0.5?a:b); }
 function applyMatchVisuals(mapIdx, countries){
   chosenMap=mapIdx; kitCountry=countries.slice(); setMap(mapIdx); applyGoalSize();
-  for(let i=0;i<NP;i++){ applyKit(i, COUNTRIES[countries[teamOf(i)]].col); }
+  for(let i=0;i<NP;i++){ const ct=countries[teamOf(i)], opp=countries[1-teamOf(i)];
+    // Yougoslavie face à la Chine (toutes deux rouges) → maillot blanc, étoile rouge conservée
+    const col = (ct===8 && opp===0) ? 0xf2f2f2 : COUNTRIES[ct].col;
+    applyKit(i, col);
+    const bs=playerMesh[i].userData.backStar; if(bs) bs.visible = (ct===8); }   // étoile rouge Yougoslavie
   applyGoalKit(0, COUNTRIES[countries[0]].col);   // but équipe 0 (z<0)
   applyGoalKit(1, COUNTRIES[countries[1]].col);   // but équipe 1 (z>0)
 }
