@@ -2011,7 +2011,9 @@ function startHost(){
     if(roomPublic) startAdvertising(hostCode,'Salon '+hostCode); });
   peer.on('error',e=> setStatus('createStatus','Erreur: '+e.type+' (réessaie / change de code)','#d04030'));
   peer.on('connection',c=>{
-    if(c.metadata && c.metadata.state){ sconn=c; c.on('data',onData);   // 2e canal (non-fiable) = flux d'état
+    // 2e canal (non-fiable) = flux d'état : reconnu par le metadata OU parce qu'il vient du MÊME pair que conn
+    if((c.metadata && c.metadata.state) || (conn && c.peer && c.peer===conn.peer)){
+      sconn=c; c.on('data',onData);
       c.on('close',()=>{ if(sconn===c) sconn=null; }); c.on('error',()=>{ if(sconn===c) sconn=null; }); return; }
     if(!conn && gmode==='menu'){ conn=c; setupConn(); }   // 1er arrivant pendant le lobby = adversaire
     else if(gmode!=='menu'){ setupSpectator(c); }         // match lancé → spectateur (rejoint en cours)
@@ -2057,7 +2059,8 @@ function onData(msg){
   if(msg.t==='init'){ myIndex=msg.idx; connected=true; enterLobby(); return; }
   if(msg.t==='spec'){ isSpectator=true; isHost=false; isSolo=false; connected=true; specCam=0;
     setStatus('joinStatus','Spectateur connecté !','#30c060'); enterGame(); return; }
-  if(msg.t==='full'){ setStatus('joinStatus','Salon plein (lobby en cours). Réessaie quand le match a démarré pour spectater.','#d04030'); netCleanup(); return; }
+  if(msg.t==='full'){ if(connected||isSpectator) return;   // jamais détruire une session déjà active (2e canal)
+    setStatus('joinStatus','Salon plein (lobby en cours). Réessaie quand le match a démarré pour spectater.','#d04030'); netCleanup(); return; }
   if(msg.t==='lobby'){
     oppCountry=(msg.c==null?null:msg.c); oppVote=(msg.v==null?null:msg.v); oppReady=!!msg.r; oppMode=msg.md|0;
     if(!isHost){ myMode=oppMode; if(msg.ab!=null) myAbil=msg.ab; }   // mode & capacités décidés par l'hôte
@@ -2419,7 +2422,8 @@ function updateHUD(){
   // indicateur de ping (client en ligne uniquement)
   const nst=document.getElementById('netStat');
   if(nst){ if(connected && !isHost && !isSolo && !isSpectator){ const p=Math.round(netPing);
-      nst.style.display='block'; nst.textContent='PING '+p+' ms';
+      const sOk = (sconn && sconn.open) ? ' · S✓' : ' · S✗';   // canal d'état non-fiable actif ?
+      nst.style.display='block'; nst.textContent='PING '+p+' ms'+sOk;
       nst.style.color = p<60?'#7CFFB2' : p<120?'#ffd54a' : '#ff6a5e'; }
     else nst.style.display='none'; }
   // coup spécial : logo + état (cooldown / prêt / actif) — masqué en mode standard
