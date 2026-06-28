@@ -850,7 +850,7 @@ function animateLegs(mesh, speed, anim, dt){
 
 // ===================== ETAT DE JEU =====================
 let isHost=false, isSolo=false, isTraining=false, myIndex=0, connected=false;
-let peer=null, conn=null;
+let peer=null, conn=null, sconn=null;   // conn = canal fiable (events/inputs) · sconn = canal non-fiable (état, anti-gigue)
 let specConns=[], netNP=2;           // connexions spectateurs (hôte) ; nb joueurs vu par le réseau
 // Lobby (choix pays + vote map + mode)
 let myCountry=null, oppCountry=null, myVote=null, oppVote=null, myReady=false, oppReady=false;
@@ -1940,7 +1940,7 @@ function genCode(){ const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s='';
   for(let i=0;i<4;i++)s+=A[(Math.random()*A.length)|0]; return s; }
 function setStatus(el,txt,col){ const e=document.getElementById(el); if(e)e.textContent=txt;
   if(col){ const d=el==='joinStatus'?'connDot2':'connDot'; const dd=document.getElementById(d); if(dd)dd.style.background=col; } }
-function netCleanup(){ stopAdvertising(); try{conn&&conn.close();}catch(e){} try{peer&&peer.destroy();}catch(e){} conn=null;peer=null;connected=false; }
+function netCleanup(){ stopAdvertising(); try{conn&&conn.close();}catch(e){} try{sconn&&sconn.close();}catch(e){} try{peer&&peer.destroy();}catch(e){} conn=null;sconn=null;peer=null;connected=false; }
 
 // ===================== SALONS PUBLICS (découverte via MQTT) =====================
 // MQTT ne sert qu'à ANNONCER/LISTER les rooms. La partie elle-même reste en P2P (PeerJS).
@@ -2011,6 +2011,8 @@ function startHost(){
     if(roomPublic) startAdvertising(hostCode,'Salon '+hostCode); });
   peer.on('error',e=> setStatus('createStatus','Erreur: '+e.type+' (réessaie / change de code)','#d04030'));
   peer.on('connection',c=>{
+    if(c.metadata && c.metadata.state){ sconn=c; c.on('data',onData);   // 2e canal (non-fiable) = flux d'état
+      c.on('close',()=>{ if(sconn===c) sconn=null; }); c.on('error',()=>{ if(sconn===c) sconn=null; }); return; }
     if(!conn && gmode==='menu'){ conn=c; setupConn(); }   // 1er arrivant pendant le lobby = adversaire
     else if(gmode!=='menu'){ setupSpectator(c); }         // match lancé → spectateur (rejoint en cours)
     else { try{ c.send({t:'full'}); }catch(e){} setTimeout(()=>{try{c.close();}catch(e){}},300); }  // lobby déjà plein
@@ -2028,7 +2030,10 @@ function startJoin(code){
   setStatus('joinStatus','Connexion au réseau…','#e0b020');
   peer=new window.Peer({debug:1});
   peer.on('open',()=>{ setStatus('joinStatus','Recherche de la room…','#e0b020');
-    conn=peer.connect(PREFIX+code,{reliable:true}); setupConn(); });
+    conn=peer.connect(PREFIX+code,{reliable:true}); setupConn();
+    // 2e canal non-fiable pour l'état : le snapshot le plus récent passe toujours (pas de blocage en file)
+    try{ sconn=peer.connect(PREFIX+code,{reliable:false, metadata:{state:true}}); sconn.on('data',onData); sconn.on('error',()=>{ sconn=null; }); }catch(e){ sconn=null; }
+  });
   peer.on('error',e=> setStatus('joinStatus','Erreur: '+e.type,'#d04030'));
 }
 function setupConn(){
@@ -2112,7 +2117,8 @@ function sendState(force){
     st.push(Math.round(Pi?Pi.stamina:100)); mx.push(Math.round(Pi?Pi.stamMax:STAM_MAX)); }
   const msg={ t:'s', m:gmode, b:[r2(b.x),r2(b.y),r2(b.z)], p:ps,
     sc:score.slice(), tm:Math.round(timeLeft), st, mx, bo:(ball.owner==null?-1:ball.owner), pen: view.pen, sg:shotGap.slice(), ot:overtime?1:0 };
-  try{ if(conn) conn.send(msg); }catch(e){}
+  const ch = (sconn && sconn.open) ? sconn : conn;   // état sur le canal non-fiable si dispo
+  try{ if(ch) ch.send(msg); }catch(e){}
   for(const sc of specConns){ try{ sc.send(msg); }catch(e){} }   // diffusion aux spectateurs
 }
 function r2(v){ return Math.round(v*100)/100; }
@@ -2192,18 +2198,22 @@ function copyV(d,s){ d.x=s.x;d.y=s.y;d.z=s.z; }
 function setP(d,s){ d.x=s.x;d.y=s.y;d.z=s.z;d.yaw=s.yaw;d.anim=s.anim;d.speed=s.speed||0; }
 
 function interpFromBuf(dt, includeSelf){   // place ballon + (autres) joueurs depuis le tampon, dans le passé
+  const n=snapBuf.length; if(!n) return;
   const rt=performance.now()-INTERP_DELAY;
-  let A=null,B=null;
-  for(let j=0;j<snapBuf.length;j++){ if(snapBuf[j].t<=rt) A=snapBuf[j]; else { B=snapBuf[j]; break; } }
-  if(!A) A=snapBuf[snapBuf.length-1]; if(!B) B=A;
-  if(!A) return;
-  const f=(B.t>A.t)?clamp((rt-A.t)/(B.t-A.t),0,1):0;
-  view.b.x=lerp(A.b[0],B.b[0],f); view.b.y=lerp(A.b[1],B.b[1],f); view.b.z=lerp(A.b[2],B.b[2],f);
+  let ai=-1; for(let j=0;j<n;j++){ if(snapBuf[j].t<=rt) ai=j; else break; }
+  let A,B,P=null,extr=false,eF=0,span=1;
+  if(ai<0){ A=B=snapBuf[0]; }                                  // avant le 1er snapshot → on tient
+  else if(ai>=n-1){ A=snapBuf[n-1]; P=snapBuf[n>=2?n-2:n-1]; B=A; extr=true;   // au-delà du dernier → extrapolation bornée
+    span=(A.t-P.t)||1; eF=Math.min(rt-A.t,160); }
+  else { A=snapBuf[ai]; B=snapBuf[ai+1]; span=(B.t-A.t)||1; }
+  const f = extr?0 : clamp((rt-A.t)/span,0,1);
+  const co=(a,b,p)=> extr ? (a + (a-p)*(eF/span)) : lerp(a,b,f);   // interp ou extrapolation
+  view.b.x=co(A.b[0],B.b[0],P?P.b[0]:A.b[0]); view.b.y=co(A.b[1],B.b[1],P?P.b[1]:A.b[1]); view.b.z=co(A.b[2],B.b[2],P?P.b[2]:A.b[2]);
   for(let i=0;i<netNP;i++){ if(!includeSelf && i===myIndex) continue; const vo=view.p[i];
-    const pa=A.p[i], pb=B.p[i]||pa; if(!pa) continue;
-    const nx=lerp(pa[0],pb[0],f), ny=lerp(pa[1],pb[1],f), nz=lerp(pa[2],pb[2],f);
+    const pa=A.p[i], pb=B.p[i]||pa, pp=(P&&P.p[i])||pa; if(!pa) continue;
+    const nx=co(pa[0],pb[0],pp[0]), ny=co(pa[1],pb[1],pp[1]), nz=co(pa[2],pb[2],pp[2]);
     vo.speed=Math.hypot(nx-vo.x,nz-vo.z)/Math.max(dt,0.001);
-    vo.x=nx; vo.y=ny; vo.z=nz; vo.yaw=lerpAng(pa[3],pb[3],f);
+    vo.x=nx; vo.y=ny; vo.z=nz; vo.yaw=lerpAng(pa[3],pb[3],extr?0:f);
     const no=net.p[i]; vo.anim=no.anim; vo.charge=no.charge||0; vo.spin=no.spin||0; vo.abil=no.abil||0; vo.dash=no.dash||0; }
 }
 function clientUpdate(dt){
