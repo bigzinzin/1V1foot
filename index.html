@@ -149,6 +149,8 @@
   .votepill.me { background:#3a6b3a; } .votepill.opp { background:#6b3a3a; }
   #btnReady:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:0 4px 0 #7a6500; }
   #btnReady.ready { background:#7CFFB2; box-shadow:0 4px 0 #2f8a5a; color:#06301c; }
+  #netStat { position:absolute; top:14px; right:16px; font-size:12px; font-weight:800; letter-spacing:.5px;
+    background:rgba(0,0,0,.5); padding:4px 9px; border-radius:7px; display:none; z-index:12; }
 </style>
 </head>
 <body>
@@ -272,6 +274,7 @@
   <div id="pkHelp"></div>
   <div id="chatMsg"></div>
   <div id="specBar"></div>
+  <div id="netStat"></div>
 </div>
 
 <!-- PAUSE / ABDICATION -->
@@ -2044,6 +2047,8 @@ function onDisconnect(){
   setStatus(isHost?'createStatus':'joinStatus','Déconnecté','#d04030');
 }
 function onData(msg){
+  if(msg.t==='png'){ try{ if(conn) conn.send({t:'pog', s:msg.s}); }catch(e){} return; }   // hôte : renvoie l'écho
+  if(msg.t==='pog'){ netPing = performance.now()-msg.s; return; }                          // client : calcule le RTT
   if(msg.t==='init'){ myIndex=msg.idx; connected=true; enterLobby(); return; }
   if(msg.t==='spec'){ isSpectator=true; isHost=false; isSolo=false; connected=true; specCam=0;
     setStatus('joinStatus','Spectateur connecté !','#30c060'); enterGame(); return; }
@@ -2096,7 +2101,7 @@ function onData(msg){
     return;
   }
 }
-let sendAcc=0;
+let sendAcc=0, netPing=0, lastPingSend=0;
 function maybeSendState(dt){ if(!conn||!connected) return; sendAcc+=dt; if(sendAcc<0.020) return; sendAcc=0; sendState(false); }   // ~50 Hz
 function sendState(force){
   if(!conn) return;
@@ -2113,12 +2118,18 @@ function sendState(force){
 function r2(v){ return Math.round(v*100)/100; }
 
 const net={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ], bo:-1, ready:false };
+// tampon d'interpolation : on rend les autres joueurs / le ballon avec un léger retard fixe, en
+// interpolant entre 2 snapshots → absorbe la gigue réseau (anti-saccade).
+const snapBuf=[]; const INTERP_DELAY=100;
+function lerp(a,b,t){ return a+(b-a)*t; }
 function applyNetState(m){
   gmode=m.m; net.b.x=m.b[0];net.b.y=m.b[1];net.b.z=m.b[2];
   const n=m.p.length;
   netNP=n;
   for(let i=0;i<n;i++){ const s=m.p[i]; net.p[i].x=s[0];net.p[i].y=s[1];net.p[i].z=s[2];net.p[i].yaw=s[3];net.p[i].anim=s[4];net.p[i].charge=s[5]||0;net.p[i].spin=s[6]||0;net.p[i].abil=s[7]||0;net.p[i].dash=s[8]||0;net.p[i].fuseT=s[9]||0;net.p[i].deadT=s[10]||0;net.p[i].ctl=s[11]||0; }
   score=m.sc; timeLeft=m.tm; view.stam=m.st; if(m.mx) view.mx=m.mx; net.bo=(m.bo==null?-1:m.bo); view.pen=m.pen||null;
+  const tnow=performance.now(); snapBuf.push({t:tnow, b:m.b, p:m.p});   // alimente le tampon d'interpolation
+  const cut=tnow-1200; while(snapBuf.length>2 && snapBuf[0].t<cut) snapBuf.shift();
   if(m.sg){ shotGap[0]=m.sg[0]; shotGap[1]=m.sg[1]; } overtime=!!m.ot;
   if(!net.ready){ net.ready=true; predSelf.x=net.p[myIndex].x; predSelf.z=net.p[myIndex].z;
     predSelf.y=net.p[myIndex].y; predSelf.yaw=net.p[myIndex].yaw; }
@@ -2160,6 +2171,8 @@ function sendInput(){
     a:[ localInput.act.shoot==null?-1:localInput.act.shoot, localInput.act.lob?1:0, localInput.act.tackle?1:0, localInput.act.softlob?1:0, localInput.act.push?1:0, localInput.act.roulette|0, localInput.act.sombrero?1:0, localInput.act.special?1:0, localInput.act.dash?1:0 ],
     tp: r2(localInput.tacklePow||0),
     pn: localInput.pen }); }catch(e){}
+  // mesure du ping (RTT) ~2x/s
+  const nowp=performance.now(); if(nowp-lastPingSend>500){ lastPingSend=nowp; try{ conn.send({t:'png', s:nowp}); }catch(e){} }
 }
 function buildViewHost(){
   if(gmode==='replay' && rbuf[replayIdx]){
@@ -2178,15 +2191,23 @@ function buildViewHost(){
 function copyV(d,s){ d.x=s.x;d.y=s.y;d.z=s.z; }
 function setP(d,s){ d.x=s.x;d.y=s.y;d.z=s.z;d.yaw=s.yaw;d.anim=s.anim;d.speed=s.speed||0; }
 
+function interpFromBuf(dt, includeSelf){   // place ballon + (autres) joueurs depuis le tampon, dans le passé
+  const rt=performance.now()-INTERP_DELAY;
+  let A=null,B=null;
+  for(let j=0;j<snapBuf.length;j++){ if(snapBuf[j].t<=rt) A=snapBuf[j]; else { B=snapBuf[j]; break; } }
+  if(!A) A=snapBuf[snapBuf.length-1]; if(!B) B=A;
+  if(!A) return;
+  const f=(B.t>A.t)?clamp((rt-A.t)/(B.t-A.t),0,1):0;
+  view.b.x=lerp(A.b[0],B.b[0],f); view.b.y=lerp(A.b[1],B.b[1],f); view.b.z=lerp(A.b[2],B.b[2],f);
+  for(let i=0;i<netNP;i++){ if(!includeSelf && i===myIndex) continue; const vo=view.p[i];
+    const pa=A.p[i], pb=B.p[i]||pa; if(!pa) continue;
+    const nx=lerp(pa[0],pb[0],f), ny=lerp(pa[1],pb[1],f), nz=lerp(pa[2],pb[2],f);
+    vo.speed=Math.hypot(nx-vo.x,nz-vo.z)/Math.max(dt,0.001);
+    vo.x=nx; vo.y=ny; vo.z=nz; vo.yaw=lerpAng(pa[3],pb[3],f);
+    const no=net.p[i]; vo.anim=no.anim; vo.charge=no.charge||0; vo.spin=no.spin||0; vo.abil=no.abil||0; vo.dash=no.dash||0; }
+}
 function clientUpdate(dt){
-  const k=1-Math.exp(-dt*14);
-  view.b.x+=(net.b.x-view.b.x)*k; view.b.y+=(net.b.y-view.b.y)*k; view.b.z+=(net.b.z-view.b.z)*k;
-  for(let i=0;i<NP;i++){
-    if(i===myIndex) continue;
-    const vo=view.p[i], no=net.p[i]; const ddx=no.x-vo.x, ddz=no.z-vo.z;
-    vo.x+=ddx*k; vo.y+=(no.y-vo.y)*k; vo.z+=ddz*k; vo.yaw=lerpAng(vo.yaw,no.yaw,k); vo.anim=no.anim; vo.charge=no.charge||0; vo.spin=no.spin||0; vo.abil=no.abil||0; vo.dash=no.dash||0;
-    vo.speed = Math.hypot(ddx,ddz)/Math.max(dt,0.001);
-  }
+  interpFromBuf(dt, false);   // adversaires + ballon : interpolation tamponnée (anti-saccade)
   const ns=net.p[myIndex];
   // on ne prédit pas pendant les états "non contrôlables" (stun/knockback/tacle/mort) → on suit le serveur
   const canPredict = (gmode==='play'||gmode==='restart') && (ns.ctl||0)===0 && (ns.deadT||0)<=0;
@@ -2198,7 +2219,7 @@ function clientUpdate(dt){
     predSelf.fuseT = ns.fuseT||0;                                     // Kamikaze : +10%
     locomotion(predSelf, localInput, dt);
     const ex=ns.x-predSelf.x, ez=ns.z-predSelf.z;
-    if(ex*ex+ez*ez>9){ predSelf.x=ns.x; predSelf.z=ns.z; } else { predSelf.x+=ex*0.18; predSelf.z+=ez*0.18; }   // réconciliation plus douce mais nette
+    if(ex*ex+ez*ez>9){ predSelf.x=ns.x; predSelf.z=ns.z; } else { predSelf.x+=ex*0.10; predSelf.z+=ez*0.10; }   // réconciliation douce (moins de rubber-band en latence)
     predSelf.y+=(ns.y-predSelf.y)*0.4;
   } else { predSelf.x=ns.x; predSelf.z=ns.z; predSelf.y=ns.y; predSelf.vx=predSelf.vz=0; predSelf.dope=false; predSelf.fuseT=0; }
   predSelf.yaw=localInput.yaw;
@@ -2207,12 +2228,8 @@ function clientUpdate(dt){
   vs.spin=ns.spin||0; vs.abil=ns.abil||0; vs.dash=ns.dash||0;   // états visuels = autorité hôte
   vs.speed=Math.hypot(predSelf.vx,predSelf.vz);
 }
-function specUpdate(dt){   // spectateur : recopie l'état réseau dans la vue (aucune prédiction)
-  const k=1-Math.exp(-dt*16);
-  view.b.x+=(net.b.x-view.b.x)*k; view.b.y+=(net.b.y-view.b.y)*k; view.b.z+=(net.b.z-view.b.z)*k;
-  for(let i=0;i<netNP;i++){ const vo=view.p[i], no=net.p[i]; const ddx=no.x-vo.x, ddz=no.z-vo.z;
-    vo.x+=ddx*k; vo.y+=(no.y-vo.y)*k; vo.z+=ddz*k; vo.yaw=lerpAng(vo.yaw,no.yaw,k);
-    vo.anim=no.anim; vo.charge=no.charge||0; vo.spin=no.spin||0; vo.abil=no.abil||0; vo.dash=no.dash||0; vo.speed=Math.hypot(ddx,ddz)/Math.max(dt,0.001); }
+function specUpdate(dt){   // spectateur : interpolation tamponnée de tous les joueurs (aucune prédiction)
+  interpFromBuf(dt, true);
 }
 
 // ===================== RENDU =====================
@@ -2389,6 +2406,12 @@ function updateHUD(){
     const n = fz>0?Math.ceil(fz):(dd>0?Math.ceil(dd):0);
     if(n>0){ bc.style.display='block'; bc.textContent=n; } else bc.style.display='none'; }
   crosshair.style.display=(document.pointerLockElement===renderer.domElement && gmode!=='replay')?'block':'none';
+  // indicateur de ping (client en ligne uniquement)
+  const nst=document.getElementById('netStat');
+  if(nst){ if(connected && !isHost && !isSolo && !isSpectator){ const p=Math.round(netPing);
+      nst.style.display='block'; nst.textContent='PING '+p+' ms';
+      nst.style.color = p<60?'#7CFFB2' : p<120?'#ffd54a' : '#ff6a5e'; }
+    else nst.style.display='none'; }
   // coup spécial : logo + état (cooldown / prêt / actif) — masqué en mode standard
   if(abilHud){ const ab=ABILITIES[kitCountry[mt]];
     if(ab && matchAbilities){ abilHud.style.display='flex';
@@ -2426,7 +2449,7 @@ const mainMenu=document.getElementById('mainMenu'), createPanel=document.getElem
   joinPanel=document.getElementById('joinPanel'), endScreen=document.getElementById('endScreen'),
   lobbyPanel=document.getElementById('lobbyPanel');
 function showOnly(el){ for(const s of [mainMenu,createPanel,joinPanel,endScreen,lobbyPanel]) s.classList.add('hidden'); if(el)el.classList.remove('hidden'); }
-function enterGame(){ showOnly(null); prevMode='menu'; playMapMusic(chosenMap); }
+function enterGame(){ showOnly(null); prevMode='menu'; snapBuf.length=0; net.ready=false; playMapMusic(chosenMap); }
 function showEndScreen(){
   hidePause();
   const mt=myTeam(), me=score[mt], op=score[1-mt];
