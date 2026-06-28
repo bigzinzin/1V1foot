@@ -895,9 +895,9 @@ function randGap(){ shotGap[0]=(Math.random()*6)|0; shotGap[1]=(Math.random()*6)
 const netInput=[ null, null, null, null ];
 const localInput=mkInput(); localInput.yaw=Math.PI;
 
-function blankView(){ return {x:0,y:0,z:0,yaw:0,anim:0,speed:0,charge:0,spin:0,abil:0,dash:0}; }
+function blankView(){ return {x:0,y:0,z:0,yaw:0,anim:0,speed:0,charge:0,spin:0,abil:0,dash:0,fuseT:0,deadT:0,ctl:0}; }
 const view={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ],
-  mode:'menu', score:[0,0], time:MATCH_TIME, stam:[100,100,100,100], pen:null };
+  mode:'menu', score:[0,0], time:MATCH_TIME, stam:[100,100,100,100], mx:[STAM_MAX,STAM_MAX,STAM_MAX,STAM_MAX], pen:null };
 
 const pk={ shooter:0, gk:1, goalZ:0, goalZS:1, shotDone:false, diveDone:false,
   divePt:{x:0,y:1.0}, shotPt:{x:0,y:1.0}, power:0, t:0, phase:'aim', resolved:false, kickT:0, gkStart:null, corrupt:false };
@@ -2097,27 +2097,28 @@ function onData(msg){
   }
 }
 let sendAcc=0;
-function maybeSendState(dt){ if(!conn||!connected) return; sendAcc+=dt; if(sendAcc<0.030) return; sendAcc=0; sendState(false); }
+function maybeSendState(dt){ if(!conn||!connected) return; sendAcc+=dt; if(sendAcc<0.020) return; sendAcc=0; sendState(false); }   // ~50 Hz
 function sendState(force){
   if(!conn) return;
-  const b=view.b, ps=[], st=[];
-  for(let i=0;i<NP;i++){ const p=view.p[i];
-    ps.push([r2(p.x),r2(p.y),r2(p.z),r2(p.yaw),p.anim,r2(p.charge||0),r2(p.spin||0),p.abil||0,p.dash||0]);
-    st.push(Math.round(P[i]?P[i].stamina:100)); }
+  const b=view.b, ps=[], st=[], mx=[];
+  for(let i=0;i<NP;i++){ const p=view.p[i], Pi=P[i];
+    const ctl = (Pi && (Pi.stunT>0||Pi.knockT>0||Pi.tackleT>0||Pi.deadT>0)) ? 1 : 0;   // état "non contrôlable" → le client ne prédit pas
+    ps.push([r2(p.x),r2(p.y),r2(p.z),r2(p.yaw),p.anim,r2(p.charge||0),r2(p.spin||0),p.abil||0,p.dash||0, r2(Pi?Pi.fuseT:0), r2(Pi?Pi.deadT:0), ctl]);
+    st.push(Math.round(Pi?Pi.stamina:100)); mx.push(Math.round(Pi?Pi.stamMax:STAM_MAX)); }
   const msg={ t:'s', m:gmode, b:[r2(b.x),r2(b.y),r2(b.z)], p:ps,
-    sc:score.slice(), tm:Math.round(timeLeft), st, pen: view.pen, sg:shotGap.slice(), ot:overtime?1:0 };
+    sc:score.slice(), tm:Math.round(timeLeft), st, mx, bo:(ball.owner==null?-1:ball.owner), pen: view.pen, sg:shotGap.slice(), ot:overtime?1:0 };
   try{ if(conn) conn.send(msg); }catch(e){}
   for(const sc of specConns){ try{ sc.send(msg); }catch(e){} }   // diffusion aux spectateurs
 }
 function r2(v){ return Math.round(v*100)/100; }
 
-const net={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ], ready:false };
+const net={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ], bo:-1, ready:false };
 function applyNetState(m){
   gmode=m.m; net.b.x=m.b[0];net.b.y=m.b[1];net.b.z=m.b[2];
   const n=m.p.length;
   netNP=n;
-  for(let i=0;i<n;i++){ const s=m.p[i]; net.p[i].x=s[0];net.p[i].y=s[1];net.p[i].z=s[2];net.p[i].yaw=s[3];net.p[i].anim=s[4];net.p[i].charge=s[5]||0;net.p[i].spin=s[6]||0;net.p[i].abil=s[7]||0;net.p[i].dash=s[8]||0; }
-  score=m.sc; timeLeft=m.tm; view.stam=m.st; view.pen=m.pen||null;
+  for(let i=0;i<n;i++){ const s=m.p[i]; net.p[i].x=s[0];net.p[i].y=s[1];net.p[i].z=s[2];net.p[i].yaw=s[3];net.p[i].anim=s[4];net.p[i].charge=s[5]||0;net.p[i].spin=s[6]||0;net.p[i].abil=s[7]||0;net.p[i].dash=s[8]||0;net.p[i].fuseT=s[9]||0;net.p[i].deadT=s[10]||0;net.p[i].ctl=s[11]||0; }
+  score=m.sc; timeLeft=m.tm; view.stam=m.st; if(m.mx) view.mx=m.mx; net.bo=(m.bo==null?-1:m.bo); view.pen=m.pen||null;
   if(m.sg){ shotGap[0]=m.sg[0]; shotGap[1]=m.sg[1]; } overtime=!!m.ot;
   if(!net.ready){ net.ready=true; predSelf.x=net.p[myIndex].x; predSelf.z=net.p[myIndex].z;
     predSelf.y=net.p[myIndex].y; predSelf.yaw=net.p[myIndex].yaw; }
@@ -2187,13 +2188,19 @@ function clientUpdate(dt){
     vo.speed = Math.hypot(ddx,ddz)/Math.max(dt,0.001);
   }
   const ns=net.p[myIndex];
-  const canPredict = (gmode==='play'||gmode==='restart') && ns.anim!==2;
+  // on ne prédit pas pendant les états "non contrôlables" (stun/knockback/tacle/mort) → on suit le serveur
+  const canPredict = (gmode==='play'||gmode==='restart') && (ns.ctl||0)===0 && (ns.deadT||0)<=0;
   if(canPredict){
+    // aligner la prédiction sur la vraie physique : portage balle, Dopage, Insolation, Kamikaze
+    predSelf.idx = myIndex;
+    ball.owner = (net.bo>=0) ? net.bo : null;                         // → CARRY_MUL correct quand on porte la balle
+    predSelf.dope = !!(ns.abil && kitCountry[myTeam()]===6);          // Dopage (Techno) actif
+    predSelf.fuseT = ns.fuseT||0;                                     // Kamikaze : +10%
     locomotion(predSelf, localInput, dt);
     const ex=ns.x-predSelf.x, ez=ns.z-predSelf.z;
-    if(ex*ex+ez*ez>9){ predSelf.x=ns.x; predSelf.z=ns.z; } else { predSelf.x+=ex*0.12; predSelf.z+=ez*0.12; }
+    if(ex*ex+ez*ez>9){ predSelf.x=ns.x; predSelf.z=ns.z; } else { predSelf.x+=ex*0.18; predSelf.z+=ez*0.18; }   // réconciliation plus douce mais nette
     predSelf.y+=(ns.y-predSelf.y)*0.4;
-  } else { predSelf.x=ns.x; predSelf.z=ns.z; predSelf.y=ns.y; }
+  } else { predSelf.x=ns.x; predSelf.z=ns.z; predSelf.y=ns.y; predSelf.vx=predSelf.vz=0; predSelf.dope=false; predSelf.fuseT=0; }
   predSelf.yaw=localInput.yaw;
   const vs=view.p[myIndex];
   vs.x=predSelf.x; vs.y=predSelf.y; vs.z=predSelf.z; vs.yaw=predSelf.yaw; vs.anim=ns.anim; vs.charge=localInput.charge||0;
@@ -2226,7 +2233,8 @@ function renderScene(dt){
   for(let i=0;i<playerMesh.length;i++){
     const mesh=playerMesh[i], aura=auraMesh[i];
     if(i>=NP){ mesh.visible=false; continue; }   // en entraînement, l'adversaire = mannequin (visible)
-    if((isHost||isSolo) && P[i] && P[i].deadT>0){ mesh.visible=false; prevAbil[i]=0; continue; }   // mort (Kamikaze) : masqué
+    const deadNow = (isHost||isSolo) ? (P[i]&&P[i].deadT>0) : (net.p[i]&&net.p[i].deadT>0);
+    if(deadNow){ mesh.visible=false; prevAbil[i]=0; continue; }   // mort (Kamikaze) : masqué (hôte + client)
     mesh.visible=true;
     const v=view.p[i];
     // front montant de la compétence (v.abil 0→1) → cri d'activation à l'écran (tous les joueurs)
@@ -2241,7 +2249,7 @@ function renderScene(dt){
       const s=1+ch*0.25; aura.scale.set(s,s,s); aura.material.color.setHex(ch>0.75?0xffe14a:0xffcf3f); }
     else aura.visible=false;
     // Kamikaze : clignotement rouge progressif (lent au début, rapide à la fin du compte à rebours)
-    const fuseT = (isHost||isSolo) && P[i] ? (P[i].fuseT||0) : 0;
+    const fuseT = (isHost||isSolo) ? (P[i]?P[i].fuseT||0:0) : (net.p[i]?net.p[i].fuseT||0:0);
     let bodyEmis = v.dash ? 0x5c4b0b : 0x000000;   // dash : surbrillance jaune (émissif, -40%)
     let kamiBlink = false;
     if(fuseT>0){ const rate=4+(5-fuseT)*4.5; kamiBlink = (0.5+0.5*Math.sin(blinkPhase*rate))>0.5;
@@ -2368,15 +2376,17 @@ function updateHUD(){
   }
   const st=(isHost||isSolo)? (P[myIndex]?P[myIndex].stamina:STAM_MAX) : (view.stam[myIndex]||0);
   // endurance : la barre s'allonge quand le max augmente (Crédit Social) ; un repère marque la portion ajoutée
-  const curMax=(isHost||isSolo)&&P[myIndex] ? (P[myIndex].stamMax||STAM_MAX) : STAM_MAX;
+  const curMax=(isHost||isSolo) ? (P[myIndex]?(P[myIndex].stamMax||STAM_MAX):STAM_MAX) : ((view.mx&&view.mx[myIndex])||STAM_MAX);
   const stamWrap=document.getElementById('stamWrap'); if(stamWrap) stamWrap.style.width=(240*curMax/STAM_MAX)+'px';
   elStam.style.width=clamp(st/curMax*100,0,100)+'%';
   const sm=document.getElementById('stamMark');
   if(sm){ if(curMax>STAM_MAX+0.5){ sm.style.display='block'; sm.style.left=(STAM_MAX/curMax*100)+'%'; } else sm.style.display='none'; }
   // Kamikaze : compte à rebours (5s avant explosion) puis réapparition (3s) pour le joueur local
   const bc=document.getElementById('bigCount');
-  if(bc){ let n=0; const me=(isHost||isSolo)?P[myIndex]:null;
-    if(me){ if(me.fuseT>0) n=Math.ceil(me.fuseT); else if(me.deadT>0) n=Math.ceil(me.deadT); }
+  if(bc){ let fz=0, dd=0;
+    if(isHost||isSolo){ const me=P[myIndex]; if(me){ fz=me.fuseT; dd=me.deadT; } }
+    else { const n=net.p[myIndex]; if(n){ fz=n.fuseT||0; dd=n.deadT||0; } }
+    const n = fz>0?Math.ceil(fz):(dd>0?Math.ceil(dd):0);
     if(n>0){ bc.style.display='block'; bc.textContent=n; } else bc.style.display='none'; }
   crosshair.style.display=(document.pointerLockElement===renderer.domElement && gmode!=='replay')?'block':'none';
   // coup spécial : logo + état (cooldown / prêt / actif) — masqué en mode standard
