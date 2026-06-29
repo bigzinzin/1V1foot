@@ -2129,7 +2129,7 @@ function r2(v){ return Math.round(v*100)/100; }
 const net={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ], bo:-1, ready:false };
 // tampon d'interpolation : on rend les autres joueurs / le ballon avec un léger retard fixe, en
 // interpolant entre 2 snapshots → absorbe la gigue réseau (anti-saccade).
-const snapBuf=[]; const INTERP_DELAY=100;
+const snapBuf=[]; let interpDelay=100, arrJitter=0, lastSnapAt=0;   // tampon adaptatif : grandit avec la gigue mesurée
 function lerp(a,b,t){ return a+(b-a)*t; }
 function applyNetState(m){
   gmode=m.m; net.b.x=m.b[0];net.b.y=m.b[1];net.b.z=m.b[2];
@@ -2138,7 +2138,11 @@ function applyNetState(m){
   for(let i=0;i<n;i++){ const s=m.p[i]; net.p[i].x=s[0];net.p[i].y=s[1];net.p[i].z=s[2];net.p[i].yaw=s[3];net.p[i].anim=s[4];net.p[i].charge=s[5]||0;net.p[i].spin=s[6]||0;net.p[i].abil=s[7]||0;net.p[i].dash=s[8]||0;net.p[i].fuseT=s[9]||0;net.p[i].deadT=s[10]||0;net.p[i].ctl=s[11]||0; }
   score=m.sc; timeLeft=m.tm; view.stam=m.st; if(m.mx) view.mx=m.mx; net.bo=(m.bo==null?-1:m.bo); view.pen=m.pen||null;
   const tnow=performance.now(); snapBuf.push({t:tnow, b:m.b, p:m.p});   // alimente le tampon d'interpolation
-  const cut=tnow-1200; while(snapBuf.length>2 && snapBuf[0].t<cut) snapBuf.shift();
+  const cut=tnow-1500; while(snapBuf.length>2 && snapBuf[0].t<cut) snapBuf.shift();
+  // tampon adaptatif : on mesure l'écart entre arrivées ; un pic gonfle la gigue (qui décroît ensuite)
+  if(lastSnapAt){ const gap=tnow-lastSnapAt; arrJitter=Math.max(gap, arrJitter*0.90); }
+  lastSnapAt=tnow;
+  interpDelay = clamp(55 + arrJitter*1.15, 80, 320);
   if(m.sg){ shotGap[0]=m.sg[0]; shotGap[1]=m.sg[1]; } overtime=!!m.ot;
   if(!net.ready){ net.ready=true; predSelf.x=net.p[myIndex].x; predSelf.z=net.p[myIndex].z;
     predSelf.y=net.p[myIndex].y; predSelf.yaw=net.p[myIndex].yaw; }
@@ -2202,7 +2206,7 @@ function setP(d,s){ d.x=s.x;d.y=s.y;d.z=s.z;d.yaw=s.yaw;d.anim=s.anim;d.speed=s.
 
 function interpFromBuf(dt, includeSelf){   // place ballon + (autres) joueurs depuis le tampon, dans le passé
   const n=snapBuf.length; if(!n) return;
-  const rt=performance.now()-INTERP_DELAY;
+  const rt=performance.now()-interpDelay;
   let ai=-1; for(let j=0;j<n;j++){ if(snapBuf[j].t<=rt) ai=j; else break; }
   let A,B,P=null,extr=false,eF=0,span=1;
   if(ai<0){ A=B=snapBuf[0]; }                                  // avant le 1er snapshot → on tient
@@ -2463,7 +2467,7 @@ const mainMenu=document.getElementById('mainMenu'), createPanel=document.getElem
   joinPanel=document.getElementById('joinPanel'), endScreen=document.getElementById('endScreen'),
   lobbyPanel=document.getElementById('lobbyPanel');
 function showOnly(el){ for(const s of [mainMenu,createPanel,joinPanel,endScreen,lobbyPanel]) s.classList.add('hidden'); if(el)el.classList.remove('hidden'); }
-function enterGame(){ showOnly(null); prevMode='menu'; snapBuf.length=0; net.ready=false; playMapMusic(chosenMap); }
+function enterGame(){ showOnly(null); prevMode='menu'; snapBuf.length=0; net.ready=false; arrJitter=0; lastSnapAt=0; interpDelay=100; playMapMusic(chosenMap); }
 function showEndScreen(){
   hidePause();
   const mt=myTeam(), me=score[mt], op=score[1-mt];
