@@ -78,7 +78,7 @@
     text-shadow:0 4px 0 #000,0 6px 22px #000; opacity:0; transition:opacity .15s; z-index:13; }
   #fogOverlay { position:absolute; inset:0; pointer-events:none; z-index:11; opacity:0;
     transition:opacity .6s; background:radial-gradient(circle at 50% 55%, rgba(214,219,224,.86) 0%, rgba(206,212,218,.96) 55%, rgba(196,202,208,1) 100%); }
-  #fogOverlay.on { opacity:0.96; backdrop-filter:blur(5.3px); -webkit-backdrop-filter:blur(5.3px); }
+  #fogOverlay.on { opacity:0.96; backdrop-filter:blur(2.4px); -webkit-backdrop-filter:blur(2.4px); }
   #bigCount { position:absolute; top:34%; left:0; right:0; text-align:center; pointer-events:none;
     font-size:130px; font-weight:900; color:#ff4d4d; text-shadow:0 6px 0 #6e0000,0 8px 28px #000;
     display:none; z-index:13; }
@@ -338,17 +338,18 @@ const COUNTRIES = [
   { name:'Bangladesh',     short:'BANGLADESH',flag:'🇧🇩', col:0x16181d, txt:'#b8c0cc' },  // noir
   { name:'Gibraltar',      short:'GIBRALTAR', flag:'🇬🇮', col:0xf2f2f2, txt:'#ffffff' },  // blanc
   { name:'Empire Ottoman', short:'OTTOMAN',   flag:'🇹🇷', col:0x1f8a4c, txt:'#54d98a' },  // vert
-  { name:'Allemagne de l’Est', short:'RDA',   flag:'🇩🇪', col:0x6cc4e6, txt:'#9fe0f5' },  // bleu clair
+  { name:'Allemagne de l’Est', short:'RDA',   flag:'🇩🇪', col:0x93d6f0, txt:'#c2ecfb' },  // bleu clair (plus clair)
   { name:'Technodroïdes',  short:'TECHNO',     flag:'🤖', col:0x9b4dd6, txt:'#c89bf0' },  // violet
   { name:'Suriname',       short:'SURINAME',   flag:'🇸🇷', col:0xe8731f, txt:'#ff9d3c' },  // orange
   { name:'Yougoslavie',    short:'YOUGO',      flag:'🇷🇸', col:0xc62828, txt:'#ff7a7a' },  // rouge/blanc + étoile rouge dos
   { name:'Japon',          short:'JAPON',      flag:'🇯🇵', col:0x1b3b8f, txt:'#86a9ff' },  // bleu foncé/blanc
+  { name:'Argentine',      short:'ARGENTINE',  flag:'🇦🇷', col:0x8ec7ec, txt:'#aed8f5' },  // blanc rayé bleu clair
 ];
 // Coups spéciaux (touche E) — un par pays, indexé comme COUNTRIES
 const ABILITIES = [
   { name:'Crédit Social',         icon:'📈', cd:20, dur:10, desc:'Endurance restaurée à fond, max +50% et régén +50% pendant 10s.' },        // Chine
   { name:'High Kick',             icon:'🦵', cd:20, dur:0, desc:'Dash + saut + genou : immobilise l’adversaire 1,5s et le recule de 3m.' },  // Taiwan (cd 30→20)
-  { name:'Corruption',            icon:'💵', cd:45, dur:5, desc:'Immunité aux penaltys 5s : tacler par derrière n’est plus sanctionné.' },  // Bangladesh
+  { name:'Corruption',            icon:'💵', cd:45, dur:7, desc:'Immunité aux penaltys 7s : tacler par derrière n’est plus sanctionné.' },  // Bangladesh
   { name:'Détroit',               icon:'🎯', cd:0,  dur:0, uses:2, desc:'Passe droit : ouvre toutes les cases de la zone de tir (2 usages, sans cooldown).' },  // Gibraltar
   { name:'Super Jump',            icon:'🦘', cd:60, dur:0, desc:'Énorme saut + dash de 15m vers l’avant (ballon collé).' },  // Ottoman (cd 20→60)
   { name:'Ich Bin Ein Berliner',  icon:'💥', cd:50, dur:0, desc:'Onde de choc blanche qui propulse les adversaires de 8m.' },  // RDA
@@ -356,9 +357,10 @@ const ABILITIES = [
   { name:'Grabuge Tropical',      icon:'🌪️', cd:45, dur:10, desc:'Inflige un malus aléatoire à l’adversaire pendant 10s : Tempête, Insolation ou Brouillard.' },  // Suriname
   { name:'Yougosphère',           icon:'🛡️', cd:90, dur:15, desc:'Dôme de 15m au centre (15s) : bloque tous les ballons et impose le Silence (aucune capacité) aux adversaires à l’intérieur.' },  // Yougoslavie
   { name:'Kamikaze',              icon:'💣', cd:35, dur:0, desc:'Compte à rebours de 5s puis explosion (rayon 8m) : tue le lanceur (réapparition 3s) et tout joueur au contact (allié ou adverse), renvoyés dans leur moitié.' },  // Japon
+  { name:'Ankara Messi',          icon:'🐐', cd:110, dur:20, desc:'Invoque Lionel Messi (IA) dans ton équipe pendant 20s : petit, rapide, dribbleur, buteur à 100%. Un seul Messi à la fois.' },  // Argentine
 ];
 // Cri d'activation affiché à l'écran de tous les joueurs (indexé comme COUNTRIES)
-const ABIL_TITLES = ['SOCIAL CREDIT !','高踢 !','CORRUPTED !','OPEN GATE !','SUPA JUMP !','GEHT MIR AUS DEM WEG!','SUBSTANCE DEPLOYMENT : CONFIRMED','GRABUGE TROPICAL','YOUGOSPHÈRE','KAMIKAZE'];
+const ABIL_TITLES = ['SOCIAL CREDIT !','高踢 !','CORRUPTED !','OPEN GATE !','SUPA JUMP !','GEHT MIR AUS DEM WEG!','SUBSTANCE DEPLOYMENT : CONFIRMED','GRABUGE TROPICAL','YOUGOSPHÈRE','KAMIKAZE','ANKARA MESSI'];
 const MALUS_TITLES = ['','TEMPÊTE','INSOLATION','BROUILLARD'];   // index = malus.type (1/2/3)
 // Maps sélectionnables
 const MAPS = [
@@ -744,7 +746,7 @@ function makePlayer(col){
   scene.add(g);
   return g;
 }
-const playerMesh=[ makePlayer(TEAM_COL[0]), makePlayer(TEAM_COL[1]), makePlayer(TEAM_COL[0]), makePlayer(TEAM_COL[1]) ];
+const playerMesh=[ makePlayer(TEAM_COL[0]), makePlayer(TEAM_COL[1]), makePlayer(TEAM_COL[0]), makePlayer(TEAM_COL[1]), makePlayer(0x8ec7ec) ];  // [4] = slot Ankara Messi
 function applyKit(idx,colHex){ for(const m of playerMesh[idx].userData.kit) m.material.color.setHex(colHex); }
 // aura de tir chargé (coquille lumineuse jaune)
 const auraMesh=playerMesh.map(()=>{
@@ -780,7 +782,7 @@ for(let s=0;s<14;s++){ const ln=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.04,0.
 scene.add(stormGroup);
 
 // ===== Yougosphère (Yougoslavie) : dôme central =====
-const DOME_R=7.5;   // rayon 7.5m → diamètre 15m
+const DOME_R=9;   // rayon 9m → diamètre 18m
 let dome={ active:false, t:0, caster:-1 };
 function setDome(caster){ dome.active=true; dome.t=15; dome.caster=caster;
   if(isHost) netFx('dome', {c:caster}, 15000); }
@@ -795,7 +797,7 @@ function starShape(){ const s=new THREE.Shape(); const o=0.9,inn=0.38;
   for(let k=0;k<10;k++){ const r=k%2?inn:o, a=Math.PI/2 + k*Math.PI/5; const X=Math.cos(a)*r, Y=Math.sin(a)*r; k?s.lineTo(X,Y):s.moveTo(X,Y); } s.closePath(); return s; }
 const domeStar=new THREE.Mesh(new THREE.ShapeGeometry(starShape()),
   new THREE.MeshBasicMaterial({color:0xd40000, side:THREE.DoubleSide}));
-domeStar.rotation.x=-Math.PI/2; domeStar.position.y=0.22; domeStar.scale.set(2.2,2.2,2.2); domeStar.renderOrder=3; domeStar.material.depthTest=false; domeGroup.add(domeStar);
+domeStar.rotation.x=-Math.PI/2; domeStar.position.y=0.08; domeStar.scale.set(2.2,2.2,2.2); domeStar.material.polygonOffset=true; domeStar.material.polygonOffsetFactor=-1; domeGroup.add(domeStar);
 scene.add(domeGroup);
 
 // ===== Kamikaze (Japon) : explosion =====
@@ -864,20 +866,23 @@ let aiCountry=null;                 // solo : pays choisi pour l'IA (null = alé
 let mode2v2=false;                  // false = 1v1, true = 2v2
 let NP=2;                           // nb de joueurs en jeu
 let clientIndex=1;                  // index contrôlé par le client distant (1 en 1v1, 2 en 2v2)
-function teamOf(i){ return mode2v2 ? (i<2?0:1) : i; }   // équipe 0 ou 1
+// ===== Ankara Messi (Argentine) : joueur IA invoqué =====
+let messiActive=false, messiIdx=-1, messiTeam=-1, messiT=0, messiCaster=-1, prevMessiOwn=false;
+function teamOf(i){ if(i===messiIdx) return messiTeam; return mode2v2 ? (i<2?0:1) : i; }   // équipe 0 ou 1 (Messi = équipe du lanceur)
 function attackGoalZ(team){ return team===0 ? HL : -HL; }   // but visé
 function myTeam(){ return teamOf(myIndex); }
 
 function newPlayer(idx){
   return { idx, team:teamOf(idx), x:0,z:0,y:0, vx:0,vz:0,vy:0, yaw:0, onGround:true,
     stamina:STAM_MAX, tackleT:0, tackleCd:0, shotCd:0, stunT:0, anim:0, speed:0, charge:0, rouletteT:0, rouletteDir:1, rouletteCd:0, tackleHit:false,
-    abilCd:0, abilT:0, abilUsed:0, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0, fuseT:0, deadT:0 };
+    abilCd:0, abilT:0, abilUsed:0, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0, fuseT:0, deadT:0, isMessi:false, messiSpd:false };
 }
 let P=[ newPlayer(0), newPlayer(1) ];
 function setupPlayers(){
   NP = mode2v2 ? 4 : 2;
   clientIndex = mode2v2 ? 2 : 1;
   P = []; for(let i=0;i<NP;i++) P.push(newPlayer(i));
+  messiActive=false; messiIdx=-1; messiTeam=-1; messiT=0; messiCaster=-1; prevMessiOwn=false; netMessiIdx=-1;   // reset Ankara Messi
 }
 const ball={ x:0,y:BALL_R,z:0, vx:0,vy:0,vz:0, lastTouch:-1, owner:null, walled:false, wallZ:0, wallGap:0 };
 
@@ -895,12 +900,12 @@ const restartCenter={x:0,z:0};
 const shotGap=[0,0];                // case ouverte du mur "zone de tir" (par cage : [but0 z<0, but1 z>0])
 function randGap(){ shotGap[0]=(Math.random()*6)|0; shotGap[1]=(Math.random()*6)|0; }
 
-const netInput=[ null, null, null, null ];
+const netInput=[ null, null, null, null, null ];
 const localInput=mkInput(); localInput.yaw=Math.PI;
 
 function blankView(){ return {x:0,y:0,z:0,yaw:0,anim:0,speed:0,charge:0,spin:0,abil:0,dash:0,fuseT:0,deadT:0,ctl:0}; }
-const view={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ],
-  mode:'menu', score:[0,0], time:MATCH_TIME, stam:[100,100,100,100], mx:[STAM_MAX,STAM_MAX,STAM_MAX,STAM_MAX], pen:null };
+const view={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView(),blankView() ],
+  mode:'menu', score:[0,0], time:MATCH_TIME, stam:[100,100,100,100,100], mx:[STAM_MAX,STAM_MAX,STAM_MAX,STAM_MAX,STAM_MAX], pen:null };
 
 const pk={ shooter:0, gk:1, goalZ:0, goalZS:1, shotDone:false, diveDone:false,
   divePt:{x:0,y:1.0}, shotPt:{x:0,y:1.0}, power:0, t:0, phase:'aim', resolved:false, kickT:0, gkStart:null, corrupt:false };
@@ -925,7 +930,12 @@ function beep(freq,dur,vol=0.2,type='square'){
   }catch(e){}
 }
 const whistle=()=>{ beep(2100,0.12,0.18,'sine'); setTimeout(()=>beep(2300,0.16,0.18,'sine'),130); };
-const goalSnd=()=>{ beep(440,0.12,0.22); setTimeout(()=>beep(660,0.12,0.22),120); setTimeout(()=>beep(880,0.25,0.22),240); playGoalSfx(); };
+const goalSnd=(goat)=>{ beep(440,0.12,0.22); setTimeout(()=>beep(660,0.12,0.22),120); setTimeout(()=>beep(880,0.25,0.22),240); playGoalSfx(goat); };
+// Ankara Messi : sons dédiés (volume 50%)
+const boboSfx=new Audio('sfx/bobo.m4a'); boboSfx.volume=0.5;
+const goatGoalSfx=new Audio('sfx/golgolgol.m4a'); goatGoalSfx.volume=0.5;
+const messiSfx=new Audio('sfx/messi.m4a'); messiSfx.volume=0.5;
+function playSfxEl(a){ if(!sfxOn||!a) return; try{ a.currentTime=0; a.play().catch(()=>{}); }catch(e){} }
 
 // ===================== MUSIQUE ============================================
 const menuMusic = new Audio('sfx/menu.m4a'); menuMusic.loop=true; menuMusic.volume=0.907;   // lobby +15%, +20%, +20% (0.55→0.63→0.756→0.907)
@@ -939,7 +949,8 @@ function setMusicVol(v){ musicVol=Math.max(0,Math.min(1,v)); applyMapVol(); }
 let curMapMusic=-1;
 // SFX de but : but.m4a joué de 1.2s à 2.1s (volume d'origine, sans gain)
 const goalSfx = new Audio('sfx/but.m4a'); let goalSfxTimer=null;
-function playGoalSfx(){ if(!sfxOn) return;
+function playGoalSfx(goat){ if(!sfxOn) return;
+  if(goat){ playSfxEl(goatGoalSfx); return; }   // but de Messi → golgolgol.m4a
   try{ if(goalSfxTimer){ clearTimeout(goalSfxTimer); goalSfxTimer=null; }
     goalSfx.currentTime=1.2; goalSfx.play().catch(()=>{});
     goalSfxTimer=setTimeout(()=>{ try{ goalSfx.pause(); }catch(e){} }, 900); }catch(e){} }
@@ -980,7 +991,8 @@ function locomotion(p, inp, dt){
     const dope = p.dope ? 1.28 : 1;                       // Dopage (Techno) : +28% vitesse
     const insol = insolTarget(p.idx) ? 0.5 : 1;   // Insolation : -50% vitesse
     const kami = p.fuseT>0 ? 1.1 : 1;             // Kamikaze : +10% vitesse pendant le compte à rebours
-    const sp = (canSprint?SPRINT:WALK)*carry*dope*insol*kami;
+    const messi = p.messiSpd ? 1.215 : 1;         // Ankara Messi : +21.5% vitesse (+35% puis -10%)
+    const sp = (canSprint?SPRINT:WALK)*carry*dope*insol*kami*messi;
     const dvx=mvx*sp, dvz=mvz*sp;
     p.vx += (dvx-p.vx)*Math.min(1,14*dt);
     p.vz += (dvz-p.vz)*Math.min(1,14*dt);
@@ -1031,7 +1043,7 @@ function ballControl(dt){
        dist2(o.x,o.z,ball.x,ball.z) > (POSSESS+1.1)*(POSSESS+1.1)) owner=-1; }
   if(near>=0 && ball.y<1.5 && nd < POSSESS*POSSESS){
     if(owner<0) owner=near;
-    else if(near!==owner){
+    else if(near!==owner && owner!==messiIdx){   // le ballon de Messi ne se vole PAS au corps : seul un tacle le récupère
       const a=P[near], c=P[owner];
       const dBallC=dist2(c.x,c.z,ball.x,ball.z);
       const bodyD=Math.hypot(a.x-c.x,a.z-c.z);
@@ -1096,9 +1108,10 @@ function ballControl(dt){
       // roulette : 360° avec le ballon + immunité aux tacles, déclenchée à la molette du bas
       if(inp.act.roulette && p.rouletteT<=0 && p.rouletteCd<=0 && p.stamina>=ROULETTE_COST){
         const d=inp.act.roulette, rx=-Math.cos(p.yaw), rz=Math.sin(p.yaw);
-        p.vx = f.x*ROULETTE_SPEED + rx*d*ROULETTE_SPEED*0.6;
-        p.vz = f.z*ROULETTE_SPEED + rz*d*ROULETTE_SPEED*0.6;
-        p.rouletteT=ROULETTE_DUR; p.rouletteDir=d; p.rouletteCd=ROULETTE_CD; p.stamina-=ROULETTE_COST; beep(300,0.1,0.14);
+        const rs = p.isMessi ? ROULETTE_SPEED*1.15 : ROULETTE_SPEED;   // Messi : roulette +15% plus rapide
+        p.vx = f.x*rs + rx*d*rs*0.6;
+        p.vz = f.z*rs + rz*d*rs*0.6;
+        p.rouletteT=ROULETTE_DUR; p.rouletteDir=d; p.rouletteCd = p.isMessi ? 0.12 : ROULETTE_CD; p.stamina-=ROULETTE_COST; beep(300,0.1,0.14);  // Messi : enchaînable
       }
       // dribble : la balle colle devant le joueur ; pendant la roulette elle tourne autour de lui (360°)
       const ang = p.rouletteT>0 ? p.rouletteDir*2*Math.PI*(1-p.rouletteT/ROULETTE_DUR) : 0;
@@ -1135,7 +1148,7 @@ function ballControl(dt){
       const dirx=o.x-p.x, dirz=o.z-p.z; const of=fwd(o.yaw);
       const fromBehind = (dirx*of.x+dirz*of.z) > 0.35;
       // ancien système : TOUT tacle par derrière sur le porteur = penalty… sauf si le tacleur a "Corruption" active
-      if(fromBehind && oHadBall && gmode==='play'){ p.tackleHit=true; startPenalty(ti, p.noPenT>0); return; }   // Corruption (noPenT>0) : penalty montré puis annulé
+      if(fromBehind && oHadBall && gmode==='play' && !p.isMessi){ p.tackleHit=true; startPenalty(ti, p.noPenT>0); return; }   // Corruption (noPenT>0) : penalty montré puis annulé · Messi : immunisé
       else {
         p.tackleHit=true;
         o.stunT=0.45; const d=Math.hypot(dirx,dirz)||1;
@@ -1216,7 +1229,7 @@ function ballPhysics(dt){
 function mkInput(){ return { mvx:0,mvz:0,yaw:0,pitch:0,sprint:false,jumpEdge:false,charge:0,tacklePow:0,
   act:{shoot:null,lob:false,tackle:false,softlob:false,push:false,roulette:0,sombrero:false,teleport:false,special:false,dash:false}, pen:null }; }
 const NULLINPUT=mkInput();
-const aiInputs=[mkInput(),mkInput(),mkInput(),mkInput()];
+const aiInputs=[mkInput(),mkInput(),mkInput(),mkInput(),mkInput()];
 function inputFor(i){
   if(i===0) return localInput;                                  // humain local (hôte/solo) = P0
   if(!isSolo && i===clientIndex) return netInput[i]||NULLINPUT; // humain distant
@@ -1233,8 +1246,8 @@ function clearActs(){
 function attackerOfLine(zS){ return zS>0 ? 0 : 1; }              // équipe qui attaque cette ligne
 function teamGoalZS(team){ return team===0 ? -1 : 1; }           // côté du but défendu par l'équipe
 function defenderGoalZS(idx){ return teamOf(idx)===0 ? -1 : 1; } // par index joueur
-function nearestOfTeam(team,x,z){ let bi=-1,best=Infinity;
-  for(let k=0;k<NP;k++){ if(teamOf(k)!==team) continue; const d=dist2(P[k].x,P[k].z,x,z); if(d<best){best=d;bi=k;} } return bi; }
+function nearestOfTeam(team,x,z){ let bi=-1,best=Infinity;   // Messi exclu : jamais tireur de coup de pied arrêté ni gardien
+  for(let k=0;k<NP;k++){ if(teamOf(k)!==team || k===messiIdx) continue; const d=dist2(P[k].x,P[k].z,x,z); if(d<best){best=d;bi=k;} } return bi; }
 
 function setRestart(bx,bz,awardTeam){
   ball.x=bx; ball.z=bz; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.owner=null; ball.walled=false;
@@ -1282,7 +1295,8 @@ function checkRules(){
   }
 }
 function scoreGoal(team){
-  score[team]++; lastScorer=team; goalSnd();
+  score[team]++; lastScorer=team; goalSnd(messiActive && ball.lastTouch===messiIdx);   // but de Messi → golgolgol
+  if(messiActive && team===messiTeam) despawnMessi();   // l'équipe de Messi marque → Messi quitte le terrain (fin de capacité)
   gmode='goal'; goalT=1.3;
   const mine=(team===myTeam())||(isSolo&&team===0);
   showBanner('BANQUE'); showSub(mine?'TU MARQUES !':'BUT ENCAISSÉ');
@@ -1291,6 +1305,8 @@ function scoreGoal(team){
 // ===================== PENALTY =====================
 function startPenalty(victim, corrupt){
   whistle();
+  // Messi ne tire jamais les penaltys : un coéquipier s'en charge
+  if(victim===messiIdx){ const alt=nearestOfTeam(teamOf(victim), P[victim].x, P[victim].z); if(alt>=0) victim=alt; }
   const oppTeam=1-teamOf(victim), zS=teamGoalZS(oppTeam);
   pk.shooter=victim; pk.gk=nearestOfTeam(oppTeam, 0, zS*HL);
   pk.corrupt=!!corrupt;
@@ -1361,6 +1377,8 @@ function kickoff(cd){
   }
   for(const p of P){ p.y=0; p.vx=p.vz=p.vy=0; p.tackleT=0; p.tackleCd=0; p.shotCd=0; p.stunT=0; p.stamina=STAM_MAX; p.anim=0; p.charge=0;
     p.detroit=false; p.knockT=0; p.fuseT=0; p.deadT=0; }
+  if(messiActive && P[messiIdx]){ const zs=teamGoalZS(messiTeam);   // Messi reste en jeu : replacé dans sa moitié à l'engagement
+    P[messiIdx].x=(Math.random()<0.5?-1:1)*5; P[messiIdx].z=zs*adv*0.7; P[messiIdx].yaw=(zs<0?0:Math.PI); }
   maluses=[]; dome.active=false; dome.caster=-1;   // un engagement annule malus / dôme en cours
   // ballon au sol au centre (engagement classique, course au ballon)
   ball.x=0; ball.z=0; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.lastTouch=-1; ball.owner=null; ball.walled=false;
@@ -1392,6 +1410,13 @@ function stepSim(dt){
     ballControl(dt); ballPhysics(dt); separatePlayers(); stepMalus(dt);
     if(ball.owner!=null){ if(ball.owner===ballHoldOwner) ballHoldT+=dt; else { ballHoldOwner=ball.owner; ballHoldT=0; } }
     else { ballHoldOwner=null; ballHoldT=0; }
+    // Ankara Messi : chrono 20s + son "Messi a le ballon" (front montant)
+    if(messiActive){ messiT-=dt;
+      const own = ball.owner===messiIdx;
+      if(own && !prevMessiOwn) playSfxEl(messiSfx);                          // reprend le ballon → (re)démarre messi.m4a
+      else if(!own && prevMessiOwn){ try{ messiSfx.pause(); }catch(e){} }    // perd le ballon / marque → stoppe
+      prevMessiOwn=own;
+      if(messiT<=0) despawnMessi(); }
     stepProtection(dt);
     for(const p of P) clampToField(p);
     recordReplay(); checkRules(); clearActs();
@@ -1431,6 +1456,7 @@ function activateAbility(i){
   if(p.stunT>0) return;
   if(isSilenced(i)) return;                       // Yougosphère : Silence (adversaire dans le dôme)
   if(p.deadT>0) return;                           // mort (Kamikaze) : pas de capacité
+  if(country===10 && messiActive) return;         // Ankara Messi : un seul à la fois (allié inclus)
   p.abilCd = isTraining?0:ab.cd; p.abilT=ab.dur; p.abilUsed=(p.abilUsed||0)+1; p.abilFlash=0.7;
   const f=fwd(p.yaw);
   switch(country){
@@ -1441,7 +1467,7 @@ function activateAbility(i){
       if(o>=0 && dist2(p.x,p.z,P[o].x,P[o].z)<6*6){ P[o].stunT=Math.max(P[o].stunT,1.5);
         P[o].knockT=0.3; P[o].knockVx=f.x*10; P[o].knockVz=f.z*10; }   // 3m vers l'arrière
       break; }
-    case 2:  p.noPenT=5; break;                                            // Bangladesh : Corruption (immunité 5s)
+    case 2:  p.noPenT=7; break;                                            // Bangladesh : Corruption (immunité 7s)
     case 3:  p.detroit=true; break;                                        // Gibraltar : Détroit (toute l'action)
     case 4:  p.vy=JUMP_V*1.9; p.onGround=false; p.knockT=0.5; p.knockVx=f.x*30; p.knockVz=f.z*30; break;  // Ottoman : Super Jump (dash +15m, ballon collé)
     case 5:{ // RDA : onde de choc — propulse les adversaires de 8m vers l'arrière
@@ -1455,6 +1481,7 @@ function activateAbility(i){
       setMalus(type, i, nearestOpponent(i)); break; }
     case 8:  setDome(i); break;                                            // Yougoslavie : Yougosphère (dôme central)
     case 9:  p.fuseT=5; break;                                             // Japon : Kamikaze (explosion dans 5s)
+    case 10: spawnMessi(i); break;                                         // Argentine : Ankara Messi (invocation)
   }
   beep(680,0.16,0.2,'sawtooth'); beep(420,0.18,0.14);
   if(isSolo || i===myIndex) slowmo=Math.max(slowmo,1.0);   // coup spécial : léger ralenti 1.0s (+0.2s) + désaturation 50%
@@ -1482,6 +1509,66 @@ function explodeKamikaze(i){   // Japon : explosion (rayon 4m), tue le lanceur +
   const p=P[i]; boomAt(p.x,p.z);
   for(let k=0;k<NP;k++){ if(k===i) continue; if(dist2(p.x,p.z,P[k].x,P[k].z) < 4*4) killPlayer(k,1.5); }
   killPlayer(i,3);   // réapparition 3s pour le lanceur
+}
+// ===== Ankara Messi : invocation / retrait =====
+function spawnMessi(caster){
+  if(messiActive) return;                        // un seul Messi à la fois (2v2 compris)
+  messiActive=true; messiTeam=teamOf(caster); messiCaster=caster; messiT=20; messiIdx=NP;
+  const m=newPlayer(messiIdx); m.isMessi=true; m.team=messiTeam; m.messiSpd=true; m.stamMax=999; m.stamina=999;
+  const zs=teamGoalZS(messiTeam);                // entrée depuis un corner de son propre camp
+  m.x=(Math.random()<0.5?-1:1)*(HW-0.6); m.z=zs*(HL-0.6); m.y=0; m.onGround=true;
+  m.yaw=yawTo(0-m.x, 0-m.z);
+  P[messiIdx]=m; NP++;
+  playSfxEl(boboSfx);
+}
+function despawnMessi(){
+  if(!messiActive) return;
+  if(ball.owner===messiIdx) ball.owner=null;
+  if(P[messiIdx] && P[messiIdx].isMessi){ P.splice(messiIdx,1); NP--; }
+  messiActive=false; messiIdx=-1; messiTeam=-1; messiCaster=-1; messiT=0; prevMessiOwn=false;
+  try{ messiSfx.pause(); }catch(e){}
+}
+function messiAI(i, dt){   // IA de Lionel Messi (Argentine)
+  const me=P[i], inp=aiInputs[i], st=aiState[i], t=messiTeam;
+  const goalZ=attackGoalZ(t), gs=Math.sign(goalZ)||1;
+  inp.act.shoot=null; inp.act.lob=false; inp.act.tackle=false; inp.act.push=false; inp.act.roulette=0; inp.jumpEdge=false; inp.pitch=0; inp.charge=0;
+  if(st.tackleCd>0)st.tackleCd-=dt; if(st.rlCd>0)st.rlCd-=dt; if(st.shootCd>0)st.shootCd-=dt; st.weaveT+=dt;
+  if(gmode!=='play' && gmode!=='restart'){ inp.mvx=inp.mvz=0; inp.yaw=me.yaw; return; }
+  let oppNear=-1,ob=Infinity; for(let k=0;k<NP;k++){ if(teamOf(k)===t) continue; const d=dist2(P[k].x,P[k].z,me.x,me.z); if(d<ob){ob=d;oppNear=k;} }
+  const dOpp=oppNear<0?99:Math.hypot(P[oppNear].x-me.x,P[oppNear].z-me.z);
+  const have=ball.owner===i;
+  const allyHas=ball.owner!=null && ball.owner!==i && teamOf(ball.owner)===t;
+  const oppHas=ball.owner!=null && teamOf(ball.owner)!==t;
+  // distance de l'adversaire le plus proche PILE devant Messi (cône vers l'avant)
+  const f=fwd(me.yaw); let frontDist=99, frontOpp=-1;
+  for(let k=0;k<NP;k++){ if(teamOf(k)===t) continue; const dx=P[k].x-me.x,dz=P[k].z-me.z,d=Math.hypot(dx,dz)||1;
+    if((dx*f.x+dz*f.z)/d>0.55 && d<frontDist){ frontDist=d; frontOpp=k; } }
+  const front=frontDist<5, closeFront=frontDist<1.4;   // adversaire à ~1m pile devant
+  if(have){
+    const dGoal=Math.abs(goalZ-me.z);
+    let aimX;
+    if(dGoal<10){ aimX=clamp(me.x*0.3, -4, 4); }   // <10m du but : s'oriente droit vers la cage (fin du slalom)
+    else {
+      aimX=clamp(ball.x*0.3 + Math.sin(st.weaveT*1.3)*7, -HW+3, HW-3);   // slalom + weave
+      if(oppNear>=0 && dOpp<4.5){ const side=(P[oppNear].x>me.x)?-1:1; aimX=clamp(me.x+side*4.5, -HW+3, HW-3); }   // esquive latérale
+    }
+    setAImove(i, aimX, goalZ - gs*1.5, true); me.yaw=yawTo(aimX-me.x, goalZ-me.z);
+    if(closeFront && st.rlCd<=0){ st.rlCd=0.6; inp.act.roulette=(Math.random()<0.5?-1:1); }   // roulette pour passer l'homme à <1m (enchaînable)
+    else if(!front && dGoal<4 && Math.abs(me.x)<8 && st.shootCd<=0){
+      me.yaw=yawTo((-me.x)*0.3, goalZ-me.z); inp.act.shoot=0.95; st.shootCd=1.0;   // tir SEULEMENT à <4m du but → but à 100%
+    } else if(st.rlCd<=0 && dOpp<2.6){ st.rlCd=0.7; if(Math.random()<0.4) inp.act.roulette=(Math.random()<0.5?-1:1); }  // roulette sous pression (enchaînable)
+    else if(st.rlCd<=0 && !front && dGoal>=6){ st.rlCd=0.8; if(Math.random()<0.3) inp.act.push=true; }   // poussée seulement à ≥6m du but
+  } else if(oppHas){
+    const o=P[ball.owner]; setAImove(i, o.x, o.z, true); me.yaw=yawTo(o.x-me.x||0.001,o.z-me.z||0.001);
+    if(dOpp<2.0 && st.tackleCd<=0){ inp.act.tackle=true; inp.tacklePow=0.3; st.tackleCd=0.7; }   // tacle x2 (immunisé penalty)
+  } else if(allyHas || (protectBall>0 && restartTeam===t)){
+    // allié en possession OU remise en jeu de son équipe (Messi ne tire pas corner/touche) → appel en profondeur
+    const tx=clamp(ball.x*0.4 + Math.sin(st.weaveT)*6, -HW+3, HW-3);
+    setAImove(i, tx, goalZ - gs*6, true); me.yaw=yawTo(tx-me.x, goalZ-me.z);
+  } else {
+    setAImove(i, ball.x, ball.z, true); me.yaw=yawTo(ball.x-me.x||0.001, ball.z-me.z||0.001);   // ballon libre
+  }
+  inp.yaw=me.yaw;
 }
 function runActors(dt){
   for(let i=0;i<NP;i++){
@@ -1577,7 +1664,7 @@ function stepPenalty(dt){
 }
 
 // ===================== IA (multi-joueurs, par équipe) =====================
-const aiState=[0,1,2,3].map(i=>({shootCd:0,tackleCd:0,weaveT:i*1.7,stuckT:0,lastX:0,lastZ:0,detourT:0,detourSign:1,passCd:1.5,jumpCd:0,restartDone:false}));
+const aiState=[0,1,2,3,4].map(i=>({shootCd:0,tackleCd:0,weaveT:i*1.7,stuckT:0,lastX:0,lastZ:0,detourT:0,detourSign:1,passCd:1.5,jumpCd:0,restartDone:false,longCd:0,rlCd:0,kamiTarget:-1}));
 const aipk={ shChosen:false, gkChosen:false, aimX:0, aimY:1.1, dvX:0, dvY:1.1, dvT:0 };
 function isAI(i){ if(isTraining) return false; if(i===0) return false; if(!isSolo && i===clientIndex) return false; return true; }
 function setAImove(i, tx, tz, sprint){
@@ -1589,11 +1676,12 @@ function teamClosestToBall(team){ let bi=-1,best=Infinity;
 function updateAI(dt){
   for(let i=0;i<NP;i++){
     if(!isAI(i)) continue;
+    if(P[i].isMessi){ messiAI(i,dt); continue; }   // Lionel Messi : IA dédiée
     const inp=aiInputs[i], st=aiState[i], me=P[i], t=teamOf(i);
     inp.act.shoot=null; inp.act.lob=false; inp.act.tackle=false; inp.jumpEdge=false; inp.pitch=0; inp.charge=0;
     if(st.shootCd>0)st.shootCd-=dt; if(st.tackleCd>0)st.tackleCd-=dt;
     if(st.passCd>0)st.passCd-=dt; if(st.detourT>0)st.detourT-=dt; st.weaveT+=dt;
-    if(st.jumpCd>0)st.jumpCd-=dt;
+    if(st.jumpCd>0)st.jumpCd-=dt; if(st.longCd>0)st.longCd-=dt; if(st.rlCd>0)st.rlCd-=dt;
     if(!(protectBall>0 && restartTeam===t)) st.restartDone=false;   // remise en jeu (touche/corner) terminée
 
     if(gmode==='penalty'){
@@ -1622,6 +1710,12 @@ function updateAI(dt){
     const dOppBall = oppNear<0?99:Math.hypot(ball.x-P[oppNear].x, ball.z-P[oppNear].z);
     const oppHasBall = oppNear>=0 && ball.owner===oppNear;
     const heldLong = oppHasBall && ballHoldT>6;   // un joueur garde le ballon >6s → pressing
+
+    // Kamikaze amorcé (Japon) : foncer sur la cible pour l'emporter dans l'explosion
+    if(P[i].fuseT>0 && st.kamiTarget>=0 && P[st.kamiTarget]){
+      setAImove(i, P[st.kamiTarget].x, P[st.kamiTarget].z, true);
+      me.yaw=yawTo(P[st.kamiTarget].x-me.x||0.001, P[st.kamiTarget].z-me.z||0.001); inp.yaw=me.yaw; continue;
+    }
 
     // arrêt de jeu favorable à l'adversaire : se replacer pour fermer les angles vers ses cages
     if(protectBall>0 && restartTeam>=0 && restartTeam!==t){
@@ -1683,13 +1777,16 @@ function updateAI(dt){
           }
         }
       }
-      // EN POSSESSION : foncer vers le but ADVERSE (jamais vers ses propres cages — corrige le csc)
-      // weave : décale latéralement la cible pour utiliser la largeur du terrain (moins "tout droit")
-      const aimX = clamp(ball.x*0.3 + Math.sin(st.weaveT*0.9)*7, -HW+3, HW-3);
+      // dribble : roulette sous pression (23% par occasion)
+      if(st.rlCd<=0 && oppNear>=0 && Math.hypot(P[oppNear].x-me.x,P[oppNear].z-me.z)<2.6 && me.stamina>=ROULETTE_COST){
+        st.rlCd=1.6; if(Math.random()<0.23) inp.act.roulette=(Math.random()<0.5?-1:1);
+      }
+      // EN POSSESSION : foncer vers le but ADVERSE en utilisant + la LARGEUR du terrain (weave ample, moins "tout droit")
+      const aimX = clamp(ball.x*0.3 + Math.sin(st.weaveT*1.1)*10, -HW+3, HW-3);
       setAImove(i, aimX, goalZ - gs*2.0, true);
       me.yaw = yawTo(aimX - me.x, goalZ - me.z);
       if(Math.abs(goalZ - me.z) < 17 && Math.abs(me.x) < 13 && st.shootCd<=0){
-        // 25% de chance de viser hors du cadre (tir raté) — +50% si l'IA est sous Brouillard (0.375)
+        // tir courte portée : 25% de chance hors cadre (+50% sous Brouillard → 0.375)
         const fogged = maluses.some(m=>m.type===3 && teamOf(i)!==teamOf(m.caster));
         const miss = Math.random() < (fogged?0.375:0.25);
         const aimGoalX = miss ? (Math.random()<0.5?-1:1)*(GOAL_W/2 + 2 + Math.random()*3)
@@ -1698,6 +1795,20 @@ function updateAI(dt){
         inp.act.shoot = (Math.random()<0.20) ? (0.92+Math.random()*0.08)   // 20% : gros tir
                                              : (0.5 +Math.random()*0.35);
         st.shootCd=1.5;
+      } else if(st.longCd<=0 && (me.z*teamGoalZS(t))>=0 && Math.abs(goalZ-me.z)>=17 && Math.abs(goalZ-me.z)<48 && Math.abs(me.x)<14 && st.shootCd<=0){
+        // LONGSHOT : frappe puissante de loin qui s'appuie sur la ZONE DE TIR (vise la case ouverte, 50% de rater)
+        st.longCd=1.0;
+        if(Math.random()<0.25){
+          const gap=shotGap[goalZ>0?1:0], col=gap%3, row=(gap/3)|0;   // case ouverte du mur au but attaqué
+          const cellX=-GOAL_W/2+(col+0.5)*(GOAL_W/3), onTarget=Math.random()<0.5;   // 50% de rater la cible
+          const aimGoalX = onTarget ? cellX : cellX + (Math.random()<0.5?-1:1)*(GOAL_W/3+0.6);
+          me.yaw = yawTo(aimGoalX-me.x, goalZ-me.z);
+          inp.pitch = (row===1) ? (onTarget?0.55+Math.random()*0.2:0.5) : 0.05;   // case haute → tir en hauteur naturel
+          // puissance : distribution 15% max / 60% 0.7-0.9 / 25% <0.5
+          const r=Math.random();
+          inp.act.shoot = r<0.15 ? 1.0 : (r<0.75 ? (0.7+Math.random()*0.2) : (0.3+Math.random()*0.19));
+          st.shootCd=1.6; st.longCd=3.0;
+        }
       }
     } else if(chaser){
       // ballon LIBRE ou remise en jeu pour son équipe : aller DIRECTEMENT dessus (corrige "l'IA attend devant")
@@ -1752,8 +1863,11 @@ function updateAI(dt){
       else if(cc===5){ let n=0; for(let k=0;k<NP;k++) if(teamOf(k)!==t && dist2(P[k].x,P[k].z,me.x,me.z)<6.5*6.5) n++; cast = n>0 && !haveBall; } // Berliner
       else if(cc===6) cast = haveBall && Math.abs(goalZ-me.z)<28;                    // Dopage en attaque
       else if(cc===7) cast = oppHasBall;                                             // Grabuge Tropical : débuff le porteur adverse
-      else if(cc===8) cast = oppHasBall && Math.hypot(ball.x,ball.z)<13;             // Yougosphère : quand le jeu est proche du centre
-      else if(cc===9) cast = oppHasBall && dOppMe<3.0;                               // Kamikaze : un adversaire porteur très proche
+      else if(cc===8) cast = oppHasBall && Math.hypot(ball.x,ball.z)<15;             // Yougosphère : adversaire porteur près du centre (dôme central)
+      else if(cc===9){ cast = oppHasBall && dOppMe<6;                                // Kamikaze : cible un adversaire
+        if(cast){ const carrier=oppNear; let ally=-1; for(let k=0;k<NP;k++){ if(teamOf(k)!==t && k!==carrier){ ally=k; break; } }
+          st.kamiTarget = (ally>=0 && Math.random()<0.2) ? ally : carrier; } }              // 80% porteur, 20% allié du porteur
+      else if(cc===10) cast = (ball.owner!=null) && !messiActive;                    // Ankara Messi : dès qu'une phase de jeu est engagée (et pas déjà un Messi)
       if(cast) inp.act.special=true;
     }
     inp.yaw=me.yaw;
@@ -2119,14 +2233,15 @@ function sendState(force){
     ps.push([r2(p.x),r2(p.y),r2(p.z),r2(p.yaw),p.anim,r2(p.charge||0),r2(p.spin||0),p.abil||0,p.dash||0, r2(Pi?Pi.fuseT:0), r2(Pi?Pi.deadT:0), ctl]);
     st.push(Math.round(Pi?Pi.stamina:100)); mx.push(Math.round(Pi?Pi.stamMax:STAM_MAX)); }
   const msg={ t:'s', m:gmode, b:[r2(b.x),r2(b.y),r2(b.z)], p:ps,
-    sc:score.slice(), tm:Math.round(timeLeft), st, mx, bo:(ball.owner==null?-1:ball.owner), pen: view.pen, sg:shotGap.slice(), ot:overtime?1:0 };
+    sc:score.slice(), tm:Math.round(timeLeft), st, mx, bo:(ball.owner==null?-1:ball.owner), mi:messiIdx, pen: view.pen, sg:shotGap.slice(), ot:overtime?1:0 };
   const ch = (sconn && sconn.open) ? sconn : conn;   // état sur le canal non-fiable si dispo
   try{ if(ch) ch.send(msg); }catch(e){}
   for(const sc of specConns){ try{ sc.send(msg); }catch(e){} }   // diffusion aux spectateurs
 }
 function r2(v){ return Math.round(v*100)/100; }
 
-const net={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView() ], bo:-1, ready:false };
+const net={ b:{x:0,y:BALL_R,z:0}, p:[ blankView(),blankView(),blankView(),blankView(),blankView() ], bo:-1, ready:false };
+let netMessiIdx=-1;   // index de Messi côté client (reçu du réseau)
 // tampon d'interpolation : on rend les autres joueurs / le ballon avec un léger retard fixe, en
 // interpolant entre 2 snapshots → absorbe la gigue réseau (anti-saccade).
 const snapBuf=[]; let interpDelay=100, arrJitter=0, lastSnapAt=0;   // tampon adaptatif : grandit avec la gigue mesurée
@@ -2136,7 +2251,7 @@ function applyNetState(m){
   const n=m.p.length;
   netNP=n;
   for(let i=0;i<n;i++){ const s=m.p[i]; net.p[i].x=s[0];net.p[i].y=s[1];net.p[i].z=s[2];net.p[i].yaw=s[3];net.p[i].anim=s[4];net.p[i].charge=s[5]||0;net.p[i].spin=s[6]||0;net.p[i].abil=s[7]||0;net.p[i].dash=s[8]||0;net.p[i].fuseT=s[9]||0;net.p[i].deadT=s[10]||0;net.p[i].ctl=s[11]||0; }
-  score=m.sc; timeLeft=m.tm; view.stam=m.st; if(m.mx) view.mx=m.mx; net.bo=(m.bo==null?-1:m.bo); view.pen=m.pen||null;
+  score=m.sc; timeLeft=m.tm; view.stam=m.st; if(m.mx) view.mx=m.mx; net.bo=(m.bo==null?-1:m.bo); netMessiIdx=(m.mi==null?-1:m.mi); view.pen=m.pen||null;
   const tnow=performance.now(); snapBuf.push({t:tnow, b:m.b, p:m.p});   // alimente le tampon d'interpolation
   const cut=tnow-1500; while(snapBuf.length>2 && snapBuf[0].t<cut) snapBuf.shift();
   // tampon adaptatif : on mesure l'écart entre arrivées ; un pic gonfle la gigue (qui décroît ensuite)
@@ -2251,7 +2366,7 @@ function specUpdate(dt){   // spectateur : interpolation tamponnée de tous les 
 
 // ===================== RENDU =====================
 let lastBall={x:0,y:BALL_R,z:0}, replayCamA=0, wallVisLocal=false;
-const prevAbil=[0,0,0,0];   // détection du front montant de v.abil par joueur (cri d'activation)
+const prevAbil=[0,0,0,0,0];   // détection du front montant de v.abil par joueur (cri d'activation)
 let blinkPhase=0;           // clignotement (insolation)
 const elFog=document.getElementById('fogOverlay');
 function renderScene(dt){
@@ -2264,12 +2379,17 @@ function renderScene(dt){
       'saturate('+(1-0.5*slowVis).toFixed(3)+') blur('+(slowVis*0.7).toFixed(2)+'px)'; }
     else if(renderer.domElement.style.filter){ renderer.domElement.style.filter=''; }
   }
+  const shownN = (isHost||isSolo) ? NP : netNP;    // nb de joueurs à afficher (inclut Messi)
+  const mIdx = (isHost||isSolo) ? messiIdx : netMessiIdx;
   for(let i=0;i<playerMesh.length;i++){
     const mesh=playerMesh[i], aura=auraMesh[i];
-    if(i>=NP){ mesh.visible=false; continue; }   // en entraînement, l'adversaire = mannequin (visible)
+    if(i>=shownN){ mesh.visible=false; if(mesh.scale.x!==1) mesh.scale.setScalar(1); continue; }   // slot inactif
     const deadNow = (isHost||isSolo) ? (P[i]&&P[i].deadT>0) : (net.p[i]&&net.p[i].deadT>0);
     if(deadNow){ mesh.visible=false; prevAbil[i]=0; continue; }   // mort (Kamikaze) : masqué (hôte + client)
     mesh.visible=true;
+    // Ankara Messi : plus petit (x0.5) + maillot Argentine
+    if(i===mIdx){ if(mesh.scale.x!==0.575){ mesh.scale.setScalar(0.575); for(const m of mesh.userData.kit) m.material.color.setHex(0x8ec7ec); } }
+    else if(mesh.scale.x!==1){ mesh.scale.setScalar(1); }
     const v=view.p[i];
     // front montant de la compétence (v.abil 0→1) → cri d'activation à l'écran (tous les joueurs)
     if(v.abil && !prevAbil[i] && inMatch()) showAbilTitle(kitCountry[teamOf(i)], i);
@@ -2509,6 +2629,9 @@ function buildLobbyUI(){
     abilGrid.appendChild(el);
   });
   countryGrid.innerHTML='';
+  { const rc=document.createElement('div'); rc.className='opt country compact'; rc.dataset.i='rand';   // pays aléatoire
+    rc.innerHTML='<span class="sw" style="background:#666"></span>🎲 Aléatoire<span class="cdesc">pays au hasard</span><span class="meta"></span>';
+    rc.onclick=pickRandomCountry; rc.onmouseenter=()=>showAbilHint(-1); countryGrid.appendChild(rc); }
   COUNTRIES.forEach((c,i)=>{
     const el=document.createElement('div'); el.className='opt country compact'; el.dataset.i=i;
     const ab=ABILITIES[i];
@@ -2519,6 +2642,9 @@ function buildLobbyUI(){
     countryGrid.appendChild(el);
   });
   mapGrid.innerHTML='';
+  { const rm=document.createElement('div'); rm.className='opt map'; rm.dataset.i='rand';   // map aléatoire
+    rm.innerHTML='<span class="name">🎲 Aléatoire</span><span class="desc">map au hasard</span><span class="meta"></span>';
+    rm.onclick=pickRandomMap; mapGrid.appendChild(rm); }
   MAPS.forEach((m,i)=>{
     const el=document.createElement('div'); el.className='opt map'; el.dataset.i=i;
     el.innerHTML='<span class="name">'+m.name+'</span><span class="desc">'+m.desc+'</span><span class="meta"></span>';
@@ -2591,6 +2717,9 @@ function selectCountry(i){
   myCountry=i; myReady=false; sendLobby(); renderLobby();
 }
 function selectMap(i){ myVote=i; myReady=false; sendLobby(); renderLobby(); }
+function pickRandomCountry(){ const avoid=(!isSolo && oppCountry!=null)?oppCountry:-1;
+  let c; do{ c=(Math.random()*COUNTRIES.length)|0; }while(c===avoid && COUNTRIES.length>1); selectCountry(c); }
+function pickRandomMap(){ selectMap((Math.random()*MAPS.length)|0); }
 function clickReady(){
   if(btnReady.disabled) return;
   myReady=!myReady;

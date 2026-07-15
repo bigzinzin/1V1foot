@@ -1,10 +1,15 @@
 services:
   - type: web
-    name: 1v1-foot-relay
-    runtime: node
-    region: frankfurt        # Europe : faible latence pour des joueurs FR/EU
-    plan: free               # s'endort après 15 min d'inactivité (~30-60s de réveil)
-    buildCommand: npm install
-    startCommand: node server.mjs
-    healthCheckPath: /
-    autoDeploy: true
+    name: 1v1-foot
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache

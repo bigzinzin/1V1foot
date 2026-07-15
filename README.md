@@ -1,36 +1,33 @@
-# 1V1 FOOT — Web Service (relais WebSocket)
+# 1V1 FOOT — déploiement Render
 
-Version **serveur** du jeu : au lieu d'une connexion P2P directe (souvent mauvaise route entre 2 FAI),
-le trafic passe par **ce serveur** hébergé en Europe → meilleure route / moins de gigue quand le direct est mauvais.
+Jeu 3D 1v1 (Three.js + PeerJS) en un seul fichier HTML autonome. Aucun build : c'est un **site statique**.
 
-Le jeu reste **hôte-autoritatif** (un navigateur simule), mais hôte et client communiquent
-**via le serveur** (`client ↔ serveur EU ↔ hôte`) au lieu d'un canal P2P.
+## Contenu du dossier
+- `index.html` — le jeu (Three.js et PeerJS chargés en HTTPS via CDN unpkg)
+- `render.yaml` — blueprint Render (site statique)
 
-## Contenu
-- `server.mjs` — serveur Node : sert le client (`public/`) **et** relaie le jeu en WebSocket (rooms par code, salons publics, spectateurs).
-- `public/index.html` — le jeu (transport PeerJS/MQTT remplacé par WebSocket vers ce serveur).
-- `public/sfx/` — musiques/SFX.
-- `render.yaml` — blueprint Render (Web Service Node, région Francfort, plan free).
+## Méthode A — Blueprint (recommandé, via Git)
+1. Mettre ce dossier sur GitHub/GitLab :
+   ```sh
+   cd 1v1foot-render
+   git init
+   git add .
+   git commit -m "1v1 foot - site statique"
+   git branch -M main
+   git remote add origin <URL_DE_TON_REPO>
+   git push -u origin main
+   ```
+2. Sur https://dashboard.render.com → **New** → **Blueprint** → choisir le repo.
+3. Render lit `render.yaml`, crée le site statique et publie. À chaque `git push`, redéploiement auto.
 
-## Déploiement Render (Web Service)
-1. Mettre **ce dossier** (`1v1foot-server/`) sur un repo GitHub.
-2. Render → **New** → **Blueprint** (lit `render.yaml`) **ou** **Web Service** manuel :
-   - **Runtime** : Node
-   - **Region** : Frankfurt (EU)
-   - **Build Command** : `npm install`
-   - **Start Command** : `node server.mjs`
-   - **Plan** : Free
-3. Render fournit l'URL (HTTPS + WebSocket `wss://` automatiques). Le client se connecte tout seul à son propre hôte.
-
-⚠️ **Plan Free** : le service s'endort après ~15 min d'inactivité → le **1er** à se connecter attend ~30-60 s (réveil), puis c'est instantané. Passer en plan payant (~7 $/mois) pour le garder toujours actif.
-
-## Local
-```sh
-cd 1v1foot-server
-npm install
-node server.mjs        # http://localhost:3000
-```
+## Méthode B — Static Site (sans render.yaml)
+1. Pousser le repo (étape 1 ci-dessus).
+2. Render → **New** → **Static Site** → choisir le repo, puis :
+   - **Build Command** : *(laisser vide)*
+   - **Publish Directory** : `.`
+3. **Create Static Site**.
 
 ## Notes
-- Pas de PeerJS ni MQTT : tout (matchmaking, salons publics, relais de jeu) passe par ce serveur en WebSocket.
-- Si la latence reste mauvaise même via le serveur, c'est le **dernier kilomètre** d'un joueur (sa connexion locale instable) — qu'aucun serveur ne corrige. Étape suivante éventuelle : serveur **autoritatif** complet (simulation côté serveur + rollback), plus gros chantier.
+- Render fournit le HTTPS automatiquement : la connexion P2P (PeerServer cloud) fonctionne sans config.
+- Le multijoueur passe par WebRTC P2P (NAT traversal). Marche mieux en Wi-Fi domestique ; certains réseaux d'entreprise/4G bloquent et peuvent nécessiter un serveur TURN.
+- Pour un nom de page propre, l'URL racine sert directement `index.html`.
