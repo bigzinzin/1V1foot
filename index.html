@@ -151,6 +151,20 @@
   #btnReady.ready { background:#7CFFB2; box-shadow:0 4px 0 #2f8a5a; color:#06301c; }
   #netStat { position:absolute; top:14px; right:16px; font-size:12px; font-weight:800; letter-spacing:.5px;
     background:rgba(0,0,0,.5); padding:4px 9px; border-radius:7px; display:none; z-index:12; }
+  #rouletteHud { position:absolute; bottom:100px; left:22px; display:none; align-items:center; gap:6px;
+    font-size:12px; font-weight:800; color:#fff; background:rgba(0,0,0,.4); padding:4px 9px; border-radius:8px;
+    border:1px solid rgba(255,255,255,.15); z-index:12; }
+  #rouletteHud .cd { color:#ffd54a; }
+  #rouletteHud.ready { box-shadow:0 0 0 2px rgba(124,255,178,.45); }
+  #newsBar { position:fixed; bottom:0; left:0; right:0; display:flex; align-items:center; gap:0;
+    background:rgba(6,10,16,.92); border-top:1px solid rgba(255,255,255,.12); z-index:5; height:34px; overflow:hidden; }
+  #newsBar .newslabel { flex:0 0 auto; background:#b0201c; color:#fff; font-weight:900; font-size:11px; letter-spacing:1px;
+    padding:0 12px; height:100%; display:flex; align-items:center; white-space:nowrap; }
+  #newsTrackWrap { flex:1 1 auto; overflow:hidden; height:100%; position:relative; }
+  #newsTrack { position:absolute; top:0; white-space:nowrap; display:inline-block; line-height:34px; font-size:13px;
+    font-weight:600; color:#e6edf5; will-change:transform; animation:newsScroll 48s linear infinite; }
+  #newsTrack .sep { color:#ffb703; margin:0 14px; font-weight:900; }
+  @keyframes newsScroll { from{ transform:translateX(-50%); } to{ transform:translateX(0); } }
 </style>
 </head>
 <body>
@@ -158,7 +172,7 @@
 <!-- MAIN MENU -->
 <div id="mainMenu" class="screen">
   <h1 class="logo">1V1 FOOT</h1>
-  <div class="tagline">STREET EDITION · v0.6 — coups spéciaux &amp; mode standard</div>
+  <div class="tagline">STREET EDITION · v0.8</div>
   <button class="btn" id="btnCreate">CRÉER UNE ROOM</button>
   <button class="btn alt" id="btnJoin">REJOINDRE UNE ROOM</button>
   <button class="btn alt" id="btnSolo">SOLO (vs IA)</button>
@@ -166,6 +180,10 @@
   <div class="grid" style="margin-top:6px">
     <button class="btn alt small" id="btnMusicMenu">🎵 MUSIQUE : ON</button>
     <button class="btn alt small" id="btnSfxMenu">🔊 SFX : ON</button>
+  </div>
+  <div style="max-width:300px;margin:10px auto 0;font-size:12px;font-weight:700">
+    <label for="musicVolMenu">🎚️ VOLUME : <span id="musicVolMenuVal">100%</span></label>
+    <input type="range" id="musicVolMenu" min="0" max="100" value="100" style="width:100%;margin-top:5px;accent-color:#ffd54a">
   </div>
   <div class="panel" id="publicRoomsPanel">
     <h2 style="font-size:18px;display:flex;align-items:center;justify-content:center;gap:8px">
@@ -178,6 +196,7 @@
     Crée une room (publique = visible par tous, ou privée = code à partager) et défie un adversaire en 1v1.<br>
     Découverte des salons via MQTT · partie en P2P direct (WebRTC).
   </div>
+  <div id="newsBar"><span class="newslabel">🌍 ACTUALITÉ GÉOPOLITIQUE</span><div id="newsTrackWrap"><div id="newsTrack">Chargement des dernières actus…</div></div></div>
 </div>
 
 <!-- CREATE -->
@@ -263,6 +282,7 @@
   </div>
   <div id="stamWrap"><div class="lbl">ENDURANCE</div><div id="stamBar"><div id="stamFill"></div><div id="stamMark"></div></div></div>
   <div id="abilHud"></div>
+  <div id="rouletteHud"></div>
   <div id="powWrap"><div class="lbl">PUISSANCE</div><div id="powBar"><div id="powFill"></div></div></div>
   <div id="crosshair"></div>
   <div id="banner"></div>
@@ -500,7 +520,7 @@ function buildPrison(){
     const arm=box(2.4,0.3,0.3,0x20232a); arm.position.set(x+off/2,8.8,z); g.add(arm);
     const head=new THREE.Mesh(new THREE.BoxGeometry(1.1,0.5,1.1), new THREE.MeshBasicMaterial({color:0xfff1c2}));
     head.position.set(x+off,8.6,z); g.add(head);
-    const halo=new THREE.PointLight(0xffe6a8,0.95,46,1.6); halo.position.set(x+off,8.2,z); g.add(halo);
+    const halo=new THREE.PointLight(0xffe6a8,1.8,60,1.4); halo.position.set(x+off,8.2,z); g.add(halo);   // lampadaires plus puissants sur le terrain
   }
   g.visible=false; scene.add(g); return g;
 }
@@ -654,6 +674,9 @@ function buildSpaceBase(){
   // planètes au loin
   function planet(x,y,z,r,col){ const p=new THREE.Mesh(new THREE.SphereGeometry(r,18,14), new THREE.MeshBasicMaterial({color:col})); p.position.set(x,y,z); g.add(p); }
   planet(-72,52,-130,26,0xc97b4a); planet(95,72,-165,36,0x6a7fd0); planet(64,34,128,15,0xcf5a7a);
+  // les planètes projettent leur lumière colorée sur le terrain
+  function planetLight(col,x,y,z,inten,rng){ const l=new THREE.PointLight(col,inten,rng,1.2); l.position.set(x,y,z); g.add(l); }
+  planetLight(0xc97b4a,-24,30,-30,1.0,100); planetLight(0x6a7fd0,24,34,-8,1.15,110); planetLight(0xcf5a7a,10,26,26,0.85,95);
   // fusée (hors terrain)
   const rx=-HW-30, rz=-HL+10;
   const body=box(5,26,5,0xe8edf2); body.position.set(rx,13,rz); body.castShadow=true; g.add(body);
@@ -714,8 +737,8 @@ function setMap(idx){
   const night=!!t.night, space=!!t.space;
   rainOn = night; rain.visible = night;
   starsOn = space; stars.visible = space;
-  sun.intensity  = space ? SUN_I*0.55 : (night ? SUN_I*0.28 : SUN_I);
-  hemi.intensity = space ? HEMI_I*0.6 : (night ? HEMI_I*0.45 : HEMI_I);
+  sun.intensity  = space ? SUN_I*0.72 : (night ? SUN_I*0.42 : SUN_I);   // maps sombres un peu plus éclairées
+  hemi.intensity = space ? HEMI_I*0.78 : (night ? HEMI_I*0.62 : HEMI_I);
   sun.color.setHex((night||space) ? 0x9fb0cc : 0xfff2d6);
 }
 
@@ -816,6 +839,7 @@ scene.add(ballMesh);
 const ballAura=new THREE.Mesh(new THREE.SphereGeometry(BALL_R+0.28,16,12),
   new THREE.MeshBasicMaterial({color:0xffe14a,transparent:true,opacity:0,side:THREE.BackSide}));
 ballMesh.add(ballAura); let ballAuraT=0;
+const TECHNO_COL=new THREE.Color(0x9b4dd6);   // teinte du ballon chargé (Dopage)
 
 // reticule pénalty
 const pkAim=new THREE.Mesh(new THREE.SphereGeometry(0.25,12,10),
@@ -875,7 +899,7 @@ function myTeam(){ return teamOf(myIndex); }
 function newPlayer(idx){
   return { idx, team:teamOf(idx), x:0,z:0,y:0, vx:0,vz:0,vy:0, yaw:0, onGround:true,
     stamina:STAM_MAX, tackleT:0, tackleCd:0, shotCd:0, stunT:0, anim:0, speed:0, charge:0, rouletteT:0, rouletteDir:1, rouletteCd:0, tackleHit:false,
-    abilCd:0, abilT:0, abilUsed:0, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0, fuseT:0, deadT:0, isMessi:false, messiSpd:false };
+    abilCd:0, abilT:0, abilUsed:0, stamMax:STAM_MAX, noPenT:0, detroit:false, dope:false, abilFlash:0, knockT:0, knockVx:0, knockVz:0, regenMul:1, dashT:0, dashCd:0, fuseT:0, deadT:0, isMessi:false, messiSpd:false, drainT:0 };
 }
 let P=[ newPlayer(0), newPlayer(1) ];
 function setupPlayers(){
@@ -885,6 +909,7 @@ function setupPlayers(){
   messiActive=false; messiIdx=-1; messiTeam=-1; messiT=0; messiCaster=-1; prevMessiOwn=false; netMessiIdx=-1;   // reset Ankara Messi
 }
 const ball={ x:0,y:BALL_R,z:0, vx:0,vy:0,vz:0, lastTouch:-1, owner:null, walled:false, wallZ:0, wallGap:0 };
+let ballEnergy=0, netBallEnergy=0;   // Dopage : énergie électrique chargée dans le ballon (0..1)
 
 let gmode='menu';
 let cdT=0, restartT=0, goalT=0;
@@ -938,14 +963,21 @@ const messiSfx=new Audio('sfx/messi.m4a'); messiSfx.volume=0.5;
 function playSfxEl(a){ if(!sfxOn||!a) return; try{ a.currentTime=0; a.play().catch(()=>{}); }catch(e){} }
 
 // ===================== MUSIQUE ============================================
-const menuMusic = new Audio('sfx/menu.m4a'); menuMusic.loop=true; menuMusic.volume=0.907;   // lobby +15%, +20%, +20% (0.55→0.63→0.756→0.907)
+const MENU_VOL_BASE=0.907;
+const menuMusic = new Audio('sfx/menu.m4a'); menuMusic.loop=true; menuMusic.volume=MENU_VOL_BASE;   // lobby +15%, +20%, +20% (0.55→0.63→0.756→0.907)
 const MAP_TRACKS = ['sfx/prison.m4a','sfx/chine.m4a','sfx/airport.m4a','sfx/urss.m4a','sfx/shenzhen.m4a','sfx/galaktik.m4a'];
 const MAP_START  = [0,0,0,0,0,25];                                                          // Base Spatiale (galaktik) démarre à 25s
 const MAP_VOL    = [0.375,0.375,0.375,0.375,0.3375,0.375];                                   // volume de base par map — Shenzhen (idx4) à -10%
 let musicVol = 1;                                                                            // réglage utilisateur du volume musique in-game (0..1)
 const mapMusic = MAP_TRACKS.map((src,i)=>{ const a=new Audio(src); a.loop=true; a.volume=MAP_VOL[i]; return a; });
 function applyMapVol(){ for(let i=0;i<mapMusic.length;i++) mapMusic[i].volume = MAP_VOL[i]*musicVol; }
-function setMusicVol(v){ musicVol=Math.max(0,Math.min(1,v)); applyMapVol(); }
+function setMusicVol(v){ musicVol=Math.max(0,Math.min(1,v)); applyMapVol(); menuMusic.volume=MENU_VOL_BASE*musicVol;
+  const a=document.getElementById('musicVolPause'), b=document.getElementById('musicVolMenu');
+  const pct=Math.round(musicVol*100)+'%';
+  if(a){ a.value=musicVol*100; } if(b){ b.value=musicVol*100; }
+  const av=document.getElementById('musicVolVal'), bv=document.getElementById('musicVolMenuVal');
+  if(av)av.textContent=pct; if(bv)bv.textContent=pct;
+}
 let curMapMusic=-1;
 // SFX de but : but.m4a joué de 1.2s à 2.1s (volume d'origine, sans gain)
 const goalSfx = new Audio('sfx/but.m4a'); let goalSfxTimer=null;
@@ -1037,6 +1069,8 @@ function ballControl(dt){
     const d=dist2(P[i].x,P[i].z, ball.x,ball.z);
     if(d<nd){ nd=d; near=i; }
   }
+  // ballon chargé (Dopage) en vol : un adversaire du tireur ne peut PAS le contrôler/dévier (il subira le recul)
+  if(ballEnergy>0.01 && near>=0 && ball.lastTouch>=0 && teamOf(near)!==teamOf(ball.lastTouch) && Math.hypot(ball.vx,ball.vz)>4) near=-1;
   let owner = (ball.owner!=null)?ball.owner:-1;
   if(owner>=0){ const o=P[owner];
     if(o.shotCd>0 || o.stunT>0 || o.tackleT>0 || ball.y>1.7 ||
@@ -1124,9 +1158,10 @@ function ballControl(dt){
     }
   }
 
-  // ---- 3bis) Têtes : rebond du ballon au contact de la tête ----
+  // ---- 3bis) Têtes : rebond du ballon au contact de la tête (pas sur un ballon chargé : il n'est pas déviable) ----
   for(let i=0;i<NP;i++){
     const p=P[i]; if(p.tackleT>0) continue;
+    if(ballEnergy>0.01 && ball.lastTouch>=0 && teamOf(i)!==teamOf(ball.lastTouch)) continue;   // adversaire ne peut pas tête un ballon chargé
     const hy=p.y+1.95;                                   // hauteur de tête
     if(ball.y>1.15 && Math.abs(ball.y-hy)<0.6 && dist2(p.x,p.z,ball.x,ball.z)<(PLAYER_R+0.45)*(PLAYER_R+0.45) && ball.owner==null){
       const f=fwd(p.yaw); let pw=7+p.speed*0.9+(p.onGround?0:2.5);   // tête plus forte en sprint/saut
@@ -1173,6 +1208,21 @@ function ballControl(dt){
 function ballPhysics(dt){
   ball.vy-=18*dt;
   ball.x+=ball.vx*dt; ball.y+=ball.vy*dt; ball.z+=ball.vz*dt;
+  // Dopage : ballon CHARGÉ (imblocable) → au contact, repousse l'adversaire par palier (la physique tir/hitbox change)
+  if(ball.owner==null && ballEnergy>0.01 && Math.hypot(ball.vx,ball.vz)>4 && ball.y<1.8){
+    const sh=ball.lastTouch, bs=Math.hypot(ball.vx,ball.vz)||1, dx=ball.vx/bs, dz=ball.vz/bs;   // direction du tir
+    for(let k=0;k<NP;k++){ if(k===sh) continue; if(sh>=0 && teamOf(k)===teamOf(sh)) continue;   // uniquement les adversaires du tireur
+      if(dist2(P[k].x,P[k].z,ball.x,ball.z) < (PLAYER_R+BALL_R+0.35)*(PLAYER_R+BALL_R+0.35) && Math.abs(P[k].y-ball.y)<1.6){
+        const e=ballEnergy; let kt,kv,stun;
+        if(e<0.4){ kt=0.35; kv=1/0.35; stun=0; }                 // <40% : recul ~1m
+        else if(e<0.8){ kt=0.4; kv=3/0.4; stun=0.5; }            // 40-80% : recul ~3m + stun 0.5s
+        else { kt=0.9; kv=Math.max(bs,22); stun=1.5; }           // 80-100% : emporté sur la trajectoire + stun 1.5s
+        P[k].knockT=kt; P[k].knockVx=dx*kv; P[k].knockVz=dz*kv;
+        if(stun>0) P[k].stunT=Math.max(P[k].stunT,stun);
+        ballEnergy=0; beep(150,0.12,0.18,'sawtooth'); break;     // le ballon redevient normal
+      }
+    }
+  }
   // Yougosphère : le dôme bloque le ballon LIBRE (tir/lob/poussée) qui traverse sa coque — un porteur peut y entrer
   if(dome.active && ball.owner==null && ball.y<DOME_R){
     const R=DOME_R, d2=ball.x*ball.x+ball.z*ball.z;
@@ -1219,7 +1269,8 @@ function ballPhysics(dt){
         const cell=row*3+col;
         if(cell===ball.wallGap){ ball.walled=false; }                 // case ouverte → but possible
         else { ball.z=plane - s*0.06; ball.vz=-ball.vz*0.6; ball.vx*=0.7;
-          ball.vy=Math.max(ball.vy,1.5); ball.walled=false; beep(150,0.05,0.12); }
+          ball.vy=Math.max(ball.vy,1.5); ball.walled=false; beep(150,0.05,0.12);
+          wallFlashT=1.5; wallFlashZ=wz; netFx('wallflash',{z:wz},1500); }   // case fermée touchée → flash rouge de la zone de tir (tous)
       } else ball.walled=false;
     }
   }
@@ -1250,7 +1301,7 @@ function nearestOfTeam(team,x,z){ let bi=-1,best=Infinity;   // Messi exclu : ja
   for(let k=0;k<NP;k++){ if(teamOf(k)!==team || k===messiIdx) continue; const d=dist2(P[k].x,P[k].z,x,z); if(d<best){best=d;bi=k;} } return bi; }
 
 function setRestart(bx,bz,awardTeam){
-  ball.x=bx; ball.z=bz; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.owner=null; ball.walled=false;
+  ball.x=bx; ball.z=bz; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.owner=null; ball.walled=false; ballEnergy=0;
   for(const pp of P) pp.detroit=false;                       // la sortie clôt l'effet Détroit
   const awardIdx=nearestOfTeam(awardTeam,bx,bz); ball.lastTouch=awardIdx;
   const aw=P[awardIdx];
@@ -1382,7 +1433,7 @@ function kickoff(cd){
   maluses=[]; dome.active=false; dome.caster=-1;   // un engagement annule malus / dôme en cours
   // ballon au sol au centre (engagement classique, course au ballon)
   ball.x=0; ball.z=0; ball.y=BALL_R; ball.vx=ball.vy=ball.vz=0; ball.lastTouch=-1; ball.owner=null; ball.walled=false;
-  protectBall=0; restartTeam=-1;
+  ballEnergy=0; protectBall=0; restartTeam=-1;
   if(isTraining){   // mannequin au milieu du terrain (cible pour tester les capacités), ballon vers le joueur
     const dummy=mode2v2?2:1; if(P[dummy]){ P[dummy].x=0; P[dummy].z=0; P[dummy].yaw=Math.PI; }
     ball.z=-4;
@@ -1410,6 +1461,8 @@ function stepSim(dt){
     ballControl(dt); ballPhysics(dt); separatePlayers(); stepMalus(dt);
     if(ball.owner!=null){ if(ball.owner===ballHoldOwner) ballHoldT+=dt; else { ballHoldOwner=ball.owner; ballHoldT=0; } }
     else { ballHoldOwner=null; ballHoldT=0; }
+    // Dopage : le porteur dopé charge le ballon (plein en 4s) ; un porteur non-dopé le remet à l'état normal
+    if(ball.owner!=null){ if(P[ball.owner] && P[ball.owner].dope) ballEnergy=Math.min(1, ballEnergy+dt/4); else ballEnergy=0; }
     // Ankara Messi : chrono 20s + son "Messi a le ballon" (front montant)
     if(messiActive){ messiT-=dt;
       const own = ball.owner===messiIdx;
@@ -1460,7 +1513,9 @@ function activateAbility(i){
   p.abilCd = isTraining?0:ab.cd; p.abilT=ab.dur; p.abilUsed=(p.abilUsed||0)+1; p.abilFlash=0.7;
   const f=fwd(p.yaw);
   switch(country){
-    case 0:  p.stamMax=Math.round(STAM_MAX*1.5); p.regenMul=1.5; p.stamina=p.stamMax; break;   // Chine : endurance max +50%, récup +50%, restaurée intégralement
+    case 0:  p.stamMax=Math.round(STAM_MAX*1.5); p.regenMul=1.5; p.stamina=p.stamMax;   // Chine : endurance max +50%, récup +50%, restaurée intégralement
+      { const o=nearestOpponent(i); if(o>=0 && P[o].stamina>0){ P[o].stamina*=0.5; P[o].drainT=2; } }  // draine 50% de l'endurance de l'adversaire le plus proche
+      break;
     case 1:{ // Taiwan : High Kick — dash + saut + genou (recule l'adversaire de 3m, stun 1.5s)
       p.vy=JUMP_V*0.9; p.onGround=false; p.knockT=0.42; p.knockVx=f.x*22; p.knockVz=f.z*22;  // dash +3m
       const o=nearestOpponent(i);
@@ -1584,7 +1639,7 @@ function runActors(dt){
     if(p.rouletteCd>0)p.rouletteCd-=dt;
     if(p.stunT>0)p.stunT-=dt;
     if(p.abilCd>0)p.abilCd-=dt;
-    if(p.noPenT>0)p.noPenT-=dt;
+    if(p.noPenT>0)p.noPenT-=dt; if(p.drainT>0)p.drainT-=dt;
     if(p.abilFlash>0)p.abilFlash-=dt;
     if(p.abilT>0){ p.abilT-=dt; if(p.abilT<=0){ p.stamMax=STAM_MAX; p.dope=false; p.regenMul=1; } }  // fin de compétence
     if(p.dashT>0)p.dashT-=dt; if(p.dashCd>0)p.dashCd-=dt;
@@ -2199,6 +2254,7 @@ function onData(msg){
     else if(msg.k==='replay') elReplay.style.display=msg.v?'block':'none';
     else if(msg.k==='malus' && msg.v){ maluses = maluses.filter(m=>m.caster!==msg.v.c); maluses.push({type:msg.v.ty, t:(msg.ms||10000)/1000, caster:msg.v.c, victim:msg.v.v}); }
     else if(msg.k==='dome' && msg.v){ dome.active=true; dome.t=(msg.ms||15000)/1000; dome.caster=msg.v.c; }
+    else if(msg.k==='wallflash' && msg.v){ wallFlashT=1.5; wallFlashZ=msg.v.z; }
     return;
   }
   if(msg.t==='chat'){ showChat(msg.m, false); return; }
@@ -2230,10 +2286,10 @@ function sendState(force){
   const b=view.b, ps=[], st=[], mx=[];
   for(let i=0;i<NP;i++){ const p=view.p[i], Pi=P[i];
     const ctl = (Pi && (Pi.stunT>0||Pi.knockT>0||Pi.tackleT>0||Pi.deadT>0)) ? 1 : 0;   // état "non contrôlable" → le client ne prédit pas
-    ps.push([r2(p.x),r2(p.y),r2(p.z),r2(p.yaw),p.anim,r2(p.charge||0),r2(p.spin||0),p.abil||0,p.dash||0, r2(Pi?Pi.fuseT:0), r2(Pi?Pi.deadT:0), ctl]);
+    ps.push([r2(p.x),r2(p.y),r2(p.z),r2(p.yaw),p.anim,r2(p.charge||0),r2(p.spin||0),p.abil||0,p.dash||0, r2(Pi?Pi.fuseT:0), r2(Pi?Pi.deadT:0), ctl, r2(Pi?Pi.rouletteCd:0), r2(Pi?Pi.drainT:0)]);
     st.push(Math.round(Pi?Pi.stamina:100)); mx.push(Math.round(Pi?Pi.stamMax:STAM_MAX)); }
   const msg={ t:'s', m:gmode, b:[r2(b.x),r2(b.y),r2(b.z)], p:ps,
-    sc:score.slice(), tm:Math.round(timeLeft), st, mx, bo:(ball.owner==null?-1:ball.owner), mi:messiIdx, pen: view.pen, sg:shotGap.slice(), ot:overtime?1:0 };
+    sc:score.slice(), tm:Math.round(timeLeft), st, mx, bo:(ball.owner==null?-1:ball.owner), mi:messiIdx, be:r2(ballEnergy), pen: view.pen, sg:shotGap.slice(), ot:overtime?1:0 };
   const ch = (sconn && sconn.open) ? sconn : conn;   // état sur le canal non-fiable si dispo
   try{ if(ch) ch.send(msg); }catch(e){}
   for(const sc of specConns){ try{ sc.send(msg); }catch(e){} }   // diffusion aux spectateurs
@@ -2250,7 +2306,8 @@ function applyNetState(m){
   gmode=m.m; net.b.x=m.b[0];net.b.y=m.b[1];net.b.z=m.b[2];
   const n=m.p.length;
   netNP=n;
-  for(let i=0;i<n;i++){ const s=m.p[i]; net.p[i].x=s[0];net.p[i].y=s[1];net.p[i].z=s[2];net.p[i].yaw=s[3];net.p[i].anim=s[4];net.p[i].charge=s[5]||0;net.p[i].spin=s[6]||0;net.p[i].abil=s[7]||0;net.p[i].dash=s[8]||0;net.p[i].fuseT=s[9]||0;net.p[i].deadT=s[10]||0;net.p[i].ctl=s[11]||0; }
+  for(let i=0;i<n;i++){ const s=m.p[i]; net.p[i].x=s[0];net.p[i].y=s[1];net.p[i].z=s[2];net.p[i].yaw=s[3];net.p[i].anim=s[4];net.p[i].charge=s[5]||0;net.p[i].spin=s[6]||0;net.p[i].abil=s[7]||0;net.p[i].dash=s[8]||0;net.p[i].fuseT=s[9]||0;net.p[i].deadT=s[10]||0;net.p[i].ctl=s[11]||0;net.p[i].rlcd=s[12]||0;net.p[i].drainT=s[13]||0; }
+  netBallEnergy=m.be||0;
   score=m.sc; timeLeft=m.tm; view.stam=m.st; if(m.mx) view.mx=m.mx; net.bo=(m.bo==null?-1:m.bo); netMessiIdx=(m.mi==null?-1:m.mi); view.pen=m.pen||null;
   const tnow=performance.now(); snapBuf.push({t:tnow, b:m.b, p:m.p});   // alimente le tampon d'interpolation
   const cut=tnow-1500; while(snapBuf.length>2 && snapBuf[0].t<cut) snapBuf.shift();
@@ -2366,6 +2423,7 @@ function specUpdate(dt){   // spectateur : interpolation tamponnée de tous les 
 
 // ===================== RENDU =====================
 let lastBall={x:0,y:BALL_R,z:0}, replayCamA=0, wallVisLocal=false;
+let wallFlashT=0, wallFlashZ=0;   // flash rouge de la zone de tir (tir sur case fermée), visible par tous
 const prevAbil=[0,0,0,0,0];   // détection du front montant de v.abil par joueur (cri d'activation)
 let blinkPhase=0;           // clignotement (insolation)
 const elFog=document.getElementById('fogOverlay');
@@ -2429,8 +2487,18 @@ function renderScene(dt){
     if(mesh.userData.legL) mesh.userData.legL.material.color.setHex(hot?0xffe14a:0x222831);
   }
   ballMesh.position.set(view.b.x,view.b.y,view.b.z);
-  // aura jaune autour du ballon pendant le ralenti d'un tir chargé puissant
-  if(slowVis>0.02){ ballAura.material.opacity=0.55*slowVis; ballAura.visible=true; } else ballAura.visible=false;
+  // Dopage : ballon chargé → teinte violet Techno (jusqu'à ~85%) + aura pulsante (éclairs violets approx.)
+  const be=(isHost||isSolo)?ballEnergy:netBallEnergy;
+  if(be>0.02){
+    ballMesh.material.color.set(0xffffff).lerp(TECHNO_COL, Math.min(0.85, be*0.85));
+    ballAura.visible=true; ballAura.material.color.setHex(0x9b4dd6);
+    ballAura.material.opacity=Math.min(0.8, be)*(0.55+0.45*Math.abs(Math.sin(blinkPhase*18)));
+    const s=1+be*0.45; ballAura.scale.set(s,s,s);
+  } else {
+    if(ballMesh.material.color.getHex()!==0xffffff) ballMesh.material.color.setHex(0xffffff);
+    ballAura.scale.set(1,1,1); ballAura.material.color.setHex(0xffe14a);
+    if(slowVis>0.02){ ballAura.material.opacity=0.55*slowVis; ballAura.visible=true; } else ballAura.visible=false;
+  }
   // onde de choc (RDA)
   if(shockT>0){ shockT-=dt; const pr=1-shockT/0.6; const s=1+pr*16; shockMesh.scale.set(s,s,s);
     shockMesh.material.opacity=0.6*(1-pr); if(shockT<=0) shockMesh.visible=false; }
@@ -2463,20 +2531,28 @@ function renderScene(dt){
   // zone de tir (joueur local) : apparaît en possession dans sa moitié, reste visible
   // après le tir, et ne disparaît QUE lorsqu'on entre dans la moitié adverse.
   let showWall=false;
-  const myDetroit = (isHost||isSolo) && P[myIndex] && P[myIndex].detroit;   // Détroit : zone de tir ouverte → pas de cases
-  if(!isSpectator && !myDetroit && inMatch() && (gmode==='play'||gmode==='restart')){
-    const mt=myTeam(), lp=view.p[myIndex];
-    const inOwn = lp && (lp.z*teamGoalZS(mt))>0;
-    if(inOwn && hasBallLocal()) wallVisLocal=true;
-    if(!inOwn) wallVisLocal=false;     // entrée dans la moitié adverse → disparaît
-    if(wallVisLocal && inOwn){
-      const gz=attackGoalZ(mt), s=gz>0?1:-1;
-      shotWall.position.set(0,0,gz - s*0.45);
-      const gap=shotGap[gz>0?1:0];
-      for(const m of wallCells) m.visible=(m.userData.cell!==gap);
-      showWall=true;
-    }
-  } else wallVisLocal=false;
+  if(wallFlashT>0){   // tir sur case fermée : zone de tir entière en ROUGE 1.5s (visible par tous)
+    wallFlashT-=dt;
+    const s=wallFlashZ>0?1:-1; shotWall.position.set(0,0,wallFlashZ - s*0.45);
+    for(const m of wallCells){ m.visible=true; m.material.color.setHex(0xff2020); m.material.opacity=0.55; }
+    showWall=true; wallVisLocal=false;
+  } else {
+    for(const m of wallCells){ if(m.material.color.getHex()!==0xffd54a){ m.material.color.setHex(0xffd54a); m.material.opacity=0.34; } }
+    const myDetroit = (isHost||isSolo) && P[myIndex] && P[myIndex].detroit;   // Détroit : zone de tir ouverte → pas de cases
+    if(!isSpectator && !myDetroit && inMatch() && (gmode==='play'||gmode==='restart')){
+      const mt=myTeam(), lp=view.p[myIndex];
+      const inOwn = lp && (lp.z*teamGoalZS(mt))>0;
+      if(inOwn && hasBallLocal()) wallVisLocal=true;
+      if(!inOwn) wallVisLocal=false;     // entrée dans la moitié adverse → disparaît
+      if(wallVisLocal && inOwn){
+        const gz=attackGoalZ(mt), s=gz>0?1:-1;
+        shotWall.position.set(0,0,gz - s*0.45);
+        const gap=shotGap[gz>0?1:0];
+        for(const m of wallCells) m.visible=(m.userData.cell!==gap);
+        showWall=true;
+      }
+    } else wallVisLocal=false;
+  }
   shotWall.visible=showWall;
 
   updateCamera(dt);
@@ -2533,6 +2609,11 @@ function updateHUD(){
   const curMax=(isHost||isSolo) ? (P[myIndex]?(P[myIndex].stamMax||STAM_MAX):STAM_MAX) : ((view.mx&&view.mx[myIndex])||STAM_MAX);
   const stamWrap=document.getElementById('stamWrap'); if(stamWrap) stamWrap.style.width=(240*curMax/STAM_MAX)+'px';
   elStam.style.width=clamp(st/curMax*100,0,100)+'%';
+  // Crédit Social : le joueur drainé → barre rouge + "DRAINÉ" pendant 2s
+  const drainT=(isHost||isSolo)?(P[myIndex]?P[myIndex].drainT:0):((net.p[myIndex]&&net.p[myIndex].drainT)||0);
+  const stamLbl=stamWrap?stamWrap.querySelector('.lbl'):null;
+  if(drainT>0){ elStam.style.background='#ff3b30'; if(stamLbl) stamLbl.textContent='DRAINÉ'; }
+  else { if(elStam.style.background) elStam.style.background=''; if(stamLbl && stamLbl.textContent!=='ENDURANCE') stamLbl.textContent='ENDURANCE'; }
   const sm=document.getElementById('stamMark');
   if(sm){ if(curMax>STAM_MAX+0.5){ sm.style.display='block'; sm.style.left=(STAM_MAX/curMax*100)+'%'; } else sm.style.display='none'; }
   // Kamikaze : compte à rebours (5s avant explosion) puis réapparition (3s) pour le joueur local
@@ -2542,6 +2623,14 @@ function updateHUD(){
     else { const n=net.p[myIndex]; if(n){ fz=n.fuseT||0; dd=n.deadT||0; } }
     const n = fz>0?Math.ceil(fz):(dd>0?Math.ceil(dd):0);
     if(n>0){ bc.style.display='block'; bc.textContent=n; } else bc.style.display='none'; }
+  // roulette : état PRÊT / cooldown (secondes qui s'écoulent)
+  const rh=document.getElementById('rouletteHud');
+  if(rh){ if(inMatch() && !isSpectator){
+      const rcd=(isHost||isSolo)?(P[myIndex]?P[myIndex].rouletteCd:0):((net.p[myIndex]&&net.p[myIndex].rlcd)||0);
+      const ready=rcd<=0;
+      rh.style.display='flex'; rh.classList.toggle('ready',ready);
+      rh.innerHTML='🌀 Roulette : <span class="cd">'+(ready?'PRÊT':(rcd.toFixed(2)+'s'))+'</span>';
+    } else rh.style.display='none'; }
   crosshair.style.display=(document.pointerLockElement===renderer.domElement && gmode!=='replay')?'block':'none';
   // indicateur de ping (client en ligne uniquement)
   const nst=document.getElementById('netStat');
@@ -2631,7 +2720,7 @@ function buildLobbyUI(){
   countryGrid.innerHTML='';
   { const rc=document.createElement('div'); rc.className='opt country compact'; rc.dataset.i='rand';   // pays aléatoire
     rc.innerHTML='<span class="sw" style="background:#666"></span>🎲 Aléatoire<span class="cdesc">pays au hasard</span><span class="meta"></span>';
-    rc.onclick=pickRandomCountry; rc.onmouseenter=()=>showAbilHint(-1); countryGrid.appendChild(rc); }
+    rc.onclick=()=>selectCountry('rand'); rc.onmouseenter=()=>showAbilHint(-1); countryGrid.appendChild(rc); }
   COUNTRIES.forEach((c,i)=>{
     const el=document.createElement('div'); el.className='opt country compact'; el.dataset.i=i;
     const ab=ABILITIES[i];
@@ -2644,7 +2733,7 @@ function buildLobbyUI(){
   mapGrid.innerHTML='';
   { const rm=document.createElement('div'); rm.className='opt map'; rm.dataset.i='rand';   // map aléatoire
     rm.innerHTML='<span class="name">🎲 Aléatoire</span><span class="desc">map au hasard</span><span class="meta"></span>';
-    rm.onclick=pickRandomMap; mapGrid.appendChild(rm); }
+    rm.onclick=()=>selectMap('rand'); mapGrid.appendChild(rm); }
   MAPS.forEach((m,i)=>{
     const el=document.createElement('div'); el.className='opt map'; el.dataset.i=i;
     el.innerHTML='<span class="name">'+m.name+'</span><span class="desc">'+m.desc+'</span><span class="meta"></span>';
@@ -2676,17 +2765,17 @@ function renderLobby(){
     el.querySelector('.meta').textContent = isTraining ? (i===1?'(forcé)':'') : ((clientLocked && myAbil===i) ? '(hôte)' : '');
   });
   [...countryGrid.children].forEach(el=>{
-    const i=+el.dataset.i;
+    const raw=el.dataset.i, i=(raw==='rand')?'rand':+raw;
     el.classList.toggle('sel', myCountry===i);
-    el.classList.toggle('taken', !isSolo && oppCountry===i && oppCountry!==myCountry);
-    el.querySelector('.meta').textContent = myCountry===i ? 'VOUS' : ((!isSolo&&oppCountry===i) ? 'ADVERSAIRE' : '');
+    el.classList.toggle('taken', !isSolo && i!=='rand' && oppCountry===i && oppCountry!==myCountry);
+    el.querySelector('.meta').textContent = myCountry===i ? 'VOUS' : ((!isSolo&&i!=='rand'&&oppCountry===i) ? 'ADVERSAIRE' : '');
   });
   [...mapGrid.children].forEach(el=>{
-    const i=+el.dataset.i;
+    const raw=el.dataset.i, i=(raw==='rand')?'rand':+raw;
     el.classList.toggle('sel', myVote===i);
     const meta=el.querySelector('.meta'); meta.innerHTML='';
     if(myVote===i) meta.innerHTML+='<span class="votepill me">VOTRE VOTE</span>';
-    if(!isSolo && oppVote===i) meta.innerHTML+='<span class="votepill opp">ADVERSAIRE</span>';
+    if(!isSolo && i!=='rand' && oppVote===i) meta.innerHTML+='<span class="votepill opp">ADVERSAIRE</span>';
   });
   // pays de l'IA (solo, hors entraînement)
   const showAi = isSolo && !isTraining;
@@ -2713,7 +2802,7 @@ function renderLobby(){
 function selectMode(i){ if(!isSolo && !isHost) return; myMode=i; myReady=false; sendLobby(); renderLobby(); }
 function selectAbil(v){ if((!isSolo && !isHost) || isTraining) return; myAbil=v; myReady=false; sendLobby(); renderLobby(); }
 function selectCountry(i){
-  if(!isSolo && oppCountry===i && oppCountry!==myCountry) return; // déjà pris
+  if(!isSolo && i!=='rand' && oppCountry===i && oppCountry!==myCountry) return; // déjà pris (sauf "aléatoire")
   myCountry=i; myReady=false; sendLobby(); renderLobby();
 }
 function selectMap(i){ myVote=i; myReady=false; sendLobby(); renderLobby(); }
@@ -2755,7 +2844,12 @@ function maybeStart(){
   setupPlayers();
   const countries=[null,null];       // par ÉQUIPE
   countries[myTeam()]=myCountry; countries[1-myTeam()]=oppCountry;
-  const mapIdx=resolveVote(myVote,oppVote);
+  // résolution "aléatoire" → pays concret (les deux doivent différer)
+  const rc=(c,avoid)=>{ if(c!=='rand') return c; let x; do{ x=(Math.random()*COUNTRIES.length)|0; }while(x===avoid); return x; };
+  let c0=countries[0], c1=countries[1];
+  c0=rc(c0, (c1!=='rand')?c1:-1); c1=rc(c1, c0); countries[0]=c0; countries[1]=c1;
+  const mv=(myVote==='rand')?((Math.random()*MAPS.length)|0):myVote, ov=(oppVote==='rand')?((Math.random()*MAPS.length)|0):oppVote;
+  const mapIdx=resolveVote(mv,ov);
   applyMatchVisuals(mapIdx, countries);
   if(!isSolo){ const goMsg={t:'go', map:mapIdx, c:countries, md:mode2v2?1:0, ab:matchAbilities?1:0};
     if(conn){ try{ conn.send(goMsg); }catch(e){} }
@@ -2829,7 +2923,9 @@ for(const id of ['btnSfxMenu','btnSfxPause']){ const b=document.getElementById(i
 refreshSoundBtns();
 // slider de volume de la musique in-game
 const musicVolSlider=document.getElementById('musicVolPause'), musicVolVal=document.getElementById('musicVolVal');
-if(musicVolSlider){ musicVolSlider.oninput=()=>{ const v=+musicVolSlider.value; setMusicVol(v/100); if(musicVolVal) musicVolVal.textContent=v+'%'; }; }
+if(musicVolSlider){ musicVolSlider.oninput=()=>{ setMusicVol(+musicVolSlider.value/100); }; }
+const musicVolMenuSlider=document.getElementById('musicVolMenu');
+if(musicVolMenuSlider){ musicVolMenuSlider.oninput=()=>{ setMusicVol(+musicVolMenuSlider.value/100); }; }
 
 function startSolo(){ isTraining=false; isSolo=true; isHost=true; myIndex=0; connected=false; enterLobby(); }
 function startTraining(){ isTraining=true; isSolo=true; isHost=true; myIndex=0; connected=false; myAbil=1; enterLobby(); }
@@ -2839,6 +2935,36 @@ addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.upd
 setMap(0); gmode='menu'; showOnly(mainMenu);
 kickoffMenuMusic();   // tentative immédiate (sinon : repli sur 1er geste / event load)
 mqttInit(); setInterval(renderRoomList, 2000);   // découverte des salons publics
+
+// ===================== ACTUALITÉ GÉOPOLITIQUE (bandeau défilant) =====================
+const NEWS_FALLBACK=[
+  'Tensions diplomatiques : les grandes puissances multiplient les sommets',
+  'Sécurité énergétique : l’Europe repense ses approvisionnements',
+  'Zones de conflit : appels internationaux au cessez-le-feu',
+  'Commerce mondial : nouvelles négociations tarifaires en cours',
+  'Cyberdéfense : les États renforcent leurs infrastructures critiques',
+  'Climat & géopolitique : la course aux ressources s’intensifie' ];
+function renderNews(items){
+  const track=document.getElementById('newsTrack'); if(!track) return;
+  let list=(items&&items.length)?items:NEWS_FALLBACK;
+  list=list.map(t=>String(t).replace(/[<>]/g,'').trim()).filter(t=>t && !/google\s*(actualit|news)/i.test(t));
+  if(!list.length) list=NEWS_FALLBACK;
+  const html=list.join('<span class="sep">◆</span>');
+  track.innerHTML=html+'<span class="sep">◆</span>'+html;   // doublé → défilement continu
+}
+async function fetchNews(){
+  try{ const r=await fetch('/news',{cache:'no-store'}); if(r.ok){ const j=await r.json(); if(j&&j.items&&j.items.length){ renderNews(j.items); return; } } }catch(e){}
+  try{
+    const src='https://news.google.com/rss/search?q=g%C3%A9opolitique%20OR%20diplomatie&hl=fr&gl=FR&ceid=FR:fr';
+    const r=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(src),{cache:'no-store'});
+    const txt=await r.text();
+    const titles=[...txt.matchAll(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/g)].map(m=>m[1]).slice(1,16);
+    if(titles.length){ renderNews(titles); return; }
+  }catch(e){}
+  renderNews(null);
+}
+renderNews(null); fetchNews(); setInterval(fetchNews, 20*60*1000);   // maj toutes les 20 min
+
 requestAnimationFrame(frame);
 </script>
 </body>
